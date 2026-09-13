@@ -1,11 +1,69 @@
 ---
-- name: Install Docker packages from distribution repositories
+# Instala Docker Engine desde el repositorio oficial de Docker.
+# Funciona igual en Debian y Ubuntu; los repositorios de distribucion no
+# son consistentes (docker-compose-v2 solo existe en Ubuntu) y en Debian 12
+# docker-compose es v1, incompatible con community.docker.docker_compose_v2.
+- name: Install Docker repository prerequisites
   ansible.builtin.apt:
     name:
-      - docker.io
-      - docker-compose-v2
+      - ca-certificates
+      - curl
+      - python3-debian
     state: present
     update_cache: true
+
+- name: Ensure APT keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Add Docker GPG key
+  ansible.builtin.get_url:
+    url: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Add Docker apt repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types:
+      - deb
+    uris:
+      - "https://download.docker.com/linux/{{ ansible_distribution | lower }}"
+    suites:
+      - "{{ ansible_distribution_release }}"
+    components:
+      - stable
+    signed_by: /etc/apt/keyrings/docker.asc
+    state: present
+
+- name: Install Docker Engine and Compose plugin
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+# Permite push/pull contra el registry HTTP del laboratorio. Sin esto el
+# agente Jenkins y el host app fallan con:
+# "http: server gave HTTP response to HTTPS client".
+# Ojo: esta tarea gestiona daemon.json completo; cualquier otro ajuste del
+# daemon debe agregarse aqui para no perderlo.
+- name: Allow the lab registry over HTTP
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    mode: "0644"
+    content: |
+      {
+        "insecure-registries": {{ docker_insecure_registries | to_json }}
+      }
+  when: docker_insecure_registries | length > 0
+  notify: Restart docker
 
 - name: Enable Docker
   ansible.builtin.systemd_service:
@@ -18,4 +76,3 @@
     name: "{{ ansible_user }}"
     groups: docker
     append: true
-

@@ -47,6 +47,14 @@ Ansible Vault o archivos de entorno fuera de Git.
    ejecutes builds de aplicaciones en el controller.
 6. Crea un Multibranch Pipeline apuntando al repositorio de Gitea.
 
+> El registry del laboratorio usa HTTP. El rol `docker` escribe
+> `/etc/docker/daemon.json` con `insecure-registries` en `pushlane-ci` (push
+> del agente) y `pushlane-app` (pull del despliegue), segun la variable
+> `docker_insecure_registries` del inventario. Sin ese ajuste el push falla
+> con `http: server gave HTTP response to HTTPS client`. Si registras el
+> agente en otra maquina, aplica alli la misma configuracion. La Fase 8
+> reemplaza esta excepcion con TLS.
+
 ## 6. Primer pipeline
 
 Publica el contenido del repositorio y coloca `pipelines/Jenkinsfile` como

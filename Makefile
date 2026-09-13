@@ -1,8 +1,9 @@
 .PHONY: help tofu-init tofu-fmt tofu-validate tofu-plan tofu-apply tofu-destroy ansible-check ansible-apply test
 
 TOFU_DIR := tofu
-INVENTORY := ansible/inventory/hosts.yml
-PLAYBOOK := ansible/playbooks/site.yml
+ANSIBLE_DIR := ansible
+INVENTORY := inventory/hosts.yml
+PLAYBOOK := playbooks/site.yml
 
 help:
 	@echo "Pushlane targets: tofu-init, tofu-plan, tofu-apply, ansible-check, ansible-apply, test"
@@ -25,12 +26,14 @@ tofu-apply:
 tofu-destroy:
 	tofu -chdir=$(TOFU_DIR) plan -destroy
 
+# ansible.cfg (roles_path, inventario por defecto) solo se carga si
+# ansible-playbook se ejecuta desde $(ANSIBLE_DIR).
 ansible-check:
-	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --check --diff
+	cd $(ANSIBLE_DIR) && ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --check --diff
 
 ansible-apply:
-	ansible-playbook -i $(INVENTORY) $(PLAYBOOK)
+	cd $(ANSIBLE_DIR) && ansible-playbook -i $(INVENTORY) $(PLAYBOOK)
 
 test:
-	python -m pytest apps/demo-api/tests
+	cd apps/demo-api && python -m pytest tests
 

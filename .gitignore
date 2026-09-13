@@ -1,3 +1,15 @@
+# --- Pushlane: secretos y estado local ---
+# OpenTofu: valores reales, estado y planes (los .example si se versionan)
+*.tfvars
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform/
+crash.log
+crash.*.log
+# Ansible: inventario real del lab (hosts.yml.example si se versiona)
+ansible/inventory/hosts.yml
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -1,0 +1,4 @@
+---
+# Registries HTTP tolerados por el daemon. Solo para el laboratorio sin TLS;
+# la Fase 8 lo reemplaza con certificados y esta lista debe quedar vacia.
+docker_insecure_registries: []

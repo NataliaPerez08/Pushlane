@@ -1,6 +1,9 @@
 all:
   vars:
     ansible_user: devops
+    # Registry HTTP del laboratorio; la Fase 8 lo reemplaza con TLS.
+    # Debe coincidir con REGISTRY en pipelines/Jenkinsfile.
+    lab_registry: pushlane-app.lab.local:5000
   children:
     gitea:
       hosts:
@@ -10,8 +13,15 @@ all:
       hosts:
         pushlane-ci:
           ansible_host: 192.168.10.22
+      vars:
+        # El agente Jenkins hace push de las imagenes al registry.
+        docker_insecure_registries:
+          - "{{ lab_registry }}"
     app:
       hosts:
         pushlane-app:
           ansible_host: 192.168.10.23
-
+      vars:
+        # El despliegue hace pull usando el FQDN del registry.
+        docker_insecure_registries:
+          - "{{ lab_registry }}"
