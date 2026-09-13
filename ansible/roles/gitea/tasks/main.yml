@@ -1,0 +1,18 @@
+---
+- name: Create Gitea service directory
+  ansible.builtin.file:
+    path: /opt/pushlane/gitea
+    state: directory
+    mode: "0750"
+
+- name: Install Gitea Compose definition
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../services/gitea/compose.yml"
+    dest: /opt/pushlane/gitea/compose.yml
+    mode: "0640"
+
+- name: Start Gitea
+  community.docker.docker_compose_v2:
+    project_src: /opt/pushlane/gitea
+    state: present
+

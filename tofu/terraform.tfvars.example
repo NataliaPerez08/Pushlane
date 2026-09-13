@@ -1,0 +1,37 @@
+proxmox_endpoint  = "https://pve.lab.local:8006/"
+proxmox_api_token = "REPLACE_WITH_ENV_OR_LOCAL_SECRET"
+node_name         = "pve"
+template_vm_id    = 9000
+datastore_id      = "local-lvm"
+bridge            = "vmbr0"
+gateway           = "192.168.10.1"
+dns_servers       = ["192.168.10.1"]
+ssh_public_key    = "ssh-ed25519 REPLACE_ME"
+
+vm_specs = {
+  git = {
+    vm_id     = 201
+    name      = "pushlane-git"
+    address   = "192.168.10.21/24"
+    cores     = 2
+    memory_mb = 2048
+    disk_gb   = 24
+  }
+  ci = {
+    vm_id     = 202
+    name      = "pushlane-ci"
+    address   = "192.168.10.22/24"
+    cores     = 4
+    memory_mb = 4096
+    disk_gb   = 40
+  }
+  app = {
+    vm_id     = 203
+    name      = "pushlane-app"
+    address   = "192.168.10.23/24"
+    cores     = 2
+    memory_mb = 2048
+    disk_gb   = 32
+  }
+}
+

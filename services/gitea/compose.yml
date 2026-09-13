@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gitea
+      POSTGRES_USER: gitea
+      POSTGRES_PASSWORD: change-me-before-deploy
+    volumes:
+      - gitea_db:/var/lib/postgresql/data
+
+  gitea:
+    image: docker.gitea.com/gitea:1.24
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: db:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: gitea
+      GITEA__database__PASSWD: change-me-before-deploy
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    volumes:
+      - gitea_data:/data
+
+volumes:
+  gitea_db:
+  gitea_data:
+

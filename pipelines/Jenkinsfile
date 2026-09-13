@@ -1,0 +1,64 @@
+pipeline {
+    agent { label 'docker' }
+
+    environment {
+        REGISTRY = 'pushlane-app.lab.local:5000'
+        IMAGE = "${REGISTRY}/demo-api:${GIT_COMMIT}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps { checkout scm }
+        }
+
+        stage('Lint and Test') {
+            steps {
+                dir('apps/demo-api') {
+                    sh '''
+                        python3 -m venv .venv
+                        .venv/bin/pip install -r requirements-dev.txt
+                        .venv/bin/ruff check app tests
+                        PYTHONPATH=. .venv/bin/pytest -q
+                    '''
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'docker build -t "$IMAGE" apps/demo-api'
+            }
+        }
+
+        stage('Publish') {
+            when { branch 'main' }
+            steps { sh 'docker push "$IMAGE"' }
+        }
+
+        stage('Deploy DEV') {
+            when { branch 'main' }
+            steps {
+                sshagent(credentials: ['pushlane-app-ssh']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=yes devops@pushlane-app.lab.local \
+                          "cd /opt/pushlane/app && APP_IMAGE=$IMAGE docker compose up -d demo-api"
+                    '''
+                }
+            }
+        }
+
+        stage('Health Check') {
+            when { branch 'main' }
+            steps {
+                retry(5) {
+                    sleep 3
+                    sh 'curl --fail --silent http://pushlane-app.lab.local:8000/health'
+                }
+            }
+        }
+    }
+
+    post {
+        always { deleteDir() }
+    }
+}

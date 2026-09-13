@@ -1,0 +1,18 @@
+services:
+  registry:
+    image: registry:2
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+
+  demo-api:
+    image: "${APP_IMAGE:-localhost:5000/demo-api:latest}"
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
+volumes:
+  registry_data:
+

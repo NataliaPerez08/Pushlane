@@ -1,0 +1,17 @@
+all:
+  vars:
+    ansible_user: devops
+  children:
+    gitea:
+      hosts:
+        pushlane-git:
+          ansible_host: 192.168.10.21
+    jenkins:
+      hosts:
+        pushlane-ci:
+          ansible_host: 192.168.10.22
+    app:
+      hosts:
+        pushlane-app:
+          ansible_host: 192.168.10.23
+

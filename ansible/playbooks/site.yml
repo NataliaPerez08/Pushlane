@@ -1,0 +1,26 @@
+---
+- name: Prepare every Pushlane node
+  hosts: all
+  become: true
+  roles:
+    - common
+    - docker
+
+- name: Deploy Gitea
+  hosts: gitea
+  become: true
+  roles:
+    - gitea
+
+- name: Deploy Jenkins
+  hosts: jenkins
+  become: true
+  roles:
+    - jenkins
+
+- name: Prepare application host
+  hosts: app
+  become: true
+  roles:
+    - app
+
