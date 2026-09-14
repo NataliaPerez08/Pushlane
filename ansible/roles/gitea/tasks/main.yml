@@ -11,6 +11,22 @@
     dest: /opt/pushlane/gitea/compose.yml
     mode: "0640"
 
+- name: Fail if the Gitea database password is not provided
+  ansible.builtin.assert:
+    that:
+      - gitea_db_password is defined
+      - gitea_db_password | length > 0
+    fail_msg: >-
+      Define gitea_db_password en el inventario real (hosts.yml, gitignored) o
+      en un vault (ansible-vault create group_vars/gitea/vault.yml). Ver
+      docs/bootstrap.md.
+
+- name: Install Gitea environment file
+  ansible.builtin.copy:
+    dest: /opt/pushlane/gitea/.env
+    mode: "0600"
+    content: "GITEA_DB_PASSWORD={{ gitea_db_password }}\n"
+
 - name: Start Gitea
   community.docker.docker_compose_v2:
     project_src: /opt/pushlane/gitea

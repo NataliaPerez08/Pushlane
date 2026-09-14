@@ -27,8 +27,27 @@ make ansible-check
 make ansible-apply
 ```
 
-Antes de exponer Gitea, reemplaza las contrasenas de ejemplo del Compose usando
-Ansible Vault o archivos de entorno fuera de Git.
+Antes de exponer Gitea, define la contrasena de base de datos. El compose
+exige la variable `GITEA_DB_PASSWORD` y el rol `gitea` falla si Ansible no
+la provee. Dos formas:
+
+1. **Simple:** agrega `gitea_db_password: <tu-contrasena>` al inventario real
+   `ansible/inventory/hosts.yml` (gitignored, nunca se versiona).
+2. **Con Ansible Vault (recomendada, leccion de la Fase 8):**
+
+   ```bash
+   cd ansible
+   ansible-vault create group_vars/gitea/vault.yml
+   # contenido: gitea_db_password: <tu-contrasena>
+   ```
+
+   Y aplica el playbook con el password del vault:
+
+   ```bash
+   make ansible-apply ANSIBLE_EXTRA_ARGS="--ask-vault-pass"
+   ```
+
+El rol escribe `/opt/pushlane/gitea/.env` (modo `0600`) y este no se versiona.
 
 ## 4. Gitea
 

@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: gitea
       POSTGRES_USER: gitea
-      POSTGRES_PASSWORD: change-me-before-deploy
+      POSTGRES_PASSWORD: "${GITEA_DB_PASSWORD:?definir GITEA_DB_PASSWORD en el .env}"
     volumes:
       - gitea_db:/var/lib/postgresql/data
 
@@ -19,7 +19,7 @@ services:
       GITEA__database__HOST: db:5432
       GITEA__database__NAME: gitea
       GITEA__database__USER: gitea
-      GITEA__database__PASSWD: change-me-before-deploy
+      GITEA__database__PASSWD: "${GITEA_DB_PASSWORD:?definir GITEA_DB_PASSWORD en el .env}"
     ports:
       - "3000:3000"
       - "2222:22"

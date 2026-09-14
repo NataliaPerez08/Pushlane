@@ -4,6 +4,8 @@ TOFU_DIR := tofu
 ANSIBLE_DIR := ansible
 INVENTORY := inventory/hosts.yml
 PLAYBOOK := playbooks/site.yml
+# Uso: make ansible-apply ANSIBLE_EXTRA_ARGS="--ask-vault-pass"
+ANSIBLE_EXTRA_ARGS ?=
 
 help:
 	@echo "Pushlane targets: tofu-init, tofu-plan, tofu-apply, ansible-check, ansible-apply, test"
@@ -29,10 +31,10 @@ tofu-destroy:
 # ansible.cfg (roles_path, inventario por defecto) solo se carga si
 # ansible-playbook se ejecuta desde $(ANSIBLE_DIR).
 ansible-check:
-	cd $(ANSIBLE_DIR) && ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --check --diff
+	cd $(ANSIBLE_DIR) && ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --check --diff $(ANSIBLE_EXTRA_ARGS)
 
 ansible-apply:
-	cd $(ANSIBLE_DIR) && ansible-playbook -i $(INVENTORY) $(PLAYBOOK)
+	cd $(ANSIBLE_DIR) && ansible-playbook -i $(INVENTORY) $(PLAYBOOK) $(ANSIBLE_EXTRA_ARGS)
 
 test:
 	cd apps/demo-api && python -m pytest tests
