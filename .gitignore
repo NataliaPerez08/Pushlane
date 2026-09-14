@@ -9,6 +9,8 @@ crash.log
 crash.*.log
 # Ansible: inventario real del lab (hosts.yml.example si se versiona)
 ansible/inventory/hosts.yml
+# Ansible: vaults locales junto al inventario (docs/bootstrap.md)
+ansible/inventory/group_vars/*/vault.yml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

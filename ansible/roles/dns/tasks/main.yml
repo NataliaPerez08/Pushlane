@@ -1,0 +1,133 @@
+---
+- name: Create DNS service directory
+  ansible.builtin.file:
+    path: /opt/pushlane/dns
+    state: directory
+    mode: "0750"
+
+- name: Fail if the DNS admin password is not provided
+  ansible.builtin.assert:
+    that:
+      - dns_admin_password is defined
+      - dns_admin_password | length > 0
+    fail_msg: >-
+      Define dns_admin_password en un vault (ansible-vault create
+      group_vars/dns/vault.yml). Ver docs/bootstrap.md.
+
+- name: Install DNS Compose definition
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../services/dns/compose.yml"
+    dest: /opt/pushlane/dns/compose.yml
+    mode: "0640"
+
+- name: Install DNS environment file
+  ansible.builtin.copy:
+    dest: /opt/pushlane/dns/.env
+    mode: "0600"
+    content: |
+      DNS_BIND_IP={{ ansible_host }}
+      DNS_SERVER_DOMAIN={{ dns_server_domain | default('dns.lab.local') }}
+      DNS_SERVER_ADMIN_PASSWORD={{ dns_admin_password }}
+      DNS_SERVER_RECURSION={{ dns_server_recursion | default('AllowOnlyForPrivateNetworks') }}
+      DNS_SERVER_FORWARDERS={{ dns_server_forwarders | default('1.1.1.1,8.8.8.8') }}
+
+- name: Start Technitium DNS Server
+  community.docker.docker_compose_v2:
+    project_src: /opt/pushlane/dns
+    state: present
+
+- name: Wait for the DNS web console
+  ansible.builtin.wait_for:
+    host: localhost
+    port: 5380
+    timeout: 180
+
+- name: Wait for the DNS service port
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: 53
+    timeout: 180
+
+# La API HTTP hace lo mismo que la consola web (APIDOCS.md del proyecto
+# Technitium): login -> zona Primary -> registros A por host del inventario.
+- name: Log in to the DNS API
+  ansible.builtin.uri:
+    url: http://localhost:5380/api/user/login
+    method: POST
+    body_format: form-urlencoded
+    body:
+      user: admin
+      pass: "{{ dns_admin_password }}"
+    status_code: 200
+  register: dns_login
+  no_log: true
+
+- name: Keep the DNS API session token
+  ansible.builtin.set_fact:
+    dns_api_token: "{{ dns_login.json.token }}"
+  no_log: true
+
+- name: List authoritative zones
+  ansible.builtin.uri:
+    url: http://localhost:5380/api/zones/list
+    method: POST
+    headers:
+      Authorization: "Bearer {{ dns_api_token }}"
+    status_code: 200
+  register: dns_zone_list
+
+- name: Create the lab zone
+  ansible.builtin.uri:
+    url: http://localhost:5380/api/zones/create
+    method: POST
+    headers:
+      Authorization: "Bearer {{ dns_api_token }}"
+    body_format: form-urlencoded
+    body:
+      zone: "{{ lab_domain }}"
+      type: Primary
+    status_code: 200
+  when: lab_domain not in dns_zone_list.json.response.zones | map(attribute='name') | list
+
+- name: Read the lab zone records
+  ansible.builtin.uri:
+    url: http://localhost:5380/api/zones/records/get
+    method: POST
+    headers:
+      Authorization: "Bearer {{ dns_api_token }}"
+    body_format: form-urlencoded
+    body:
+      domain: "{{ lab_domain }}"
+      zone: "{{ lab_domain }}"
+      listZone: "true"
+    status_code: 200
+  register: dns_zone_records
+
+- name: Keep the existing A records
+  ansible.builtin.set_fact:
+    dns_zone_a_records: "{{ dns_zone_records.json.response.records | default([]) | selectattr('type', 'equalto', 'A') | list }}"
+
+# overwrite=true reemplaza el record set del tipo; con el when solo se llama
+# cuando falta el registro o la IP del inventario difiere (idempotente).
+- name: Ensure an A record exists for every lab host
+  ansible.builtin.uri:
+    url: http://localhost:5380/api/zones/records/add
+    method: POST
+    headers:
+      Authorization: "Bearer {{ dns_api_token }}"
+    body_format: form-urlencoded
+    body:
+      domain: "{{ item }}.{{ lab_domain }}"
+      zone: "{{ lab_domain }}"
+      type: A
+      ttl: "{{ dns_record_ttl | default(300) }}"
+      ipAddress: "{{ hostvars[item].ansible_host }}"
+      overwrite: "true"
+    status_code: 200
+  loop: "{{ groups['all'] }}"
+  loop_control:
+    label: "{{ item }}.{{ lab_domain }} -> {{ hostvars[item].ansible_host }}"
+  when: >
+    (item ~ '.' ~ lab_domain) not in dns_zone_a_records | map(attribute='name') | list
+    or (dns_zone_a_records | selectattr('name', 'equalto', item ~ '.' ~ lab_domain)
+       | map(attribute='rData.ipAddress') | list | first | default('')) != hostvars[item].ansible_host

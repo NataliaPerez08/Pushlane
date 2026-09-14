@@ -6,6 +6,12 @@
     - common
     - docker
 
+- name: Deploy internal DNS
+  hosts: dns
+  become: true
+  roles:
+    - dns
+
 - name: Deploy Gitea
   hosts: gitea
   become: true

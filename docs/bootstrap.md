@@ -37,9 +37,13 @@ la provee. Dos formas:
 
    ```bash
    cd ansible
-   ansible-vault create group_vars/gitea/vault.yml
+   ansible-vault create inventory/group_vars/gitea/vault.yml
    # contenido: gitea_db_password: <tu-contrasena>
    ```
+
+   Los vaults viven junto al inventario (`inventory/group_vars/<grupo>/`)
+   porque Ansible solo carga group_vars del directorio del inventario o del
+   playbook; ponerlos en `ansible/group_vars/` no funciona.
 
    Y aplica el playbook con el password del vault:
 
@@ -49,14 +53,42 @@ la provee. Dos formas:
 
 El rol escribe `/opt/pushlane/gitea/.env` (modo `0600`) y este no se versiona.
 
-## 4. Gitea
+## 4. DNS interno (Technitium)
+
+El rol `dns` despliega Technitium DNS Server en `pushlane-git` (grupo `dns`
+del inventario) y crea la zona `lab.local` con un registro A por host del
+inventario, via la API HTTP del servidor.
+
+1. Define la contrasena de la consola:
+
+   ```bash
+   cd ansible
+   ansible-vault create inventory/group_vars/dns/vault.yml
+   # contenido: dns_admin_password: <tu-contrasena>
+   ```
+
+2. Aplica el playbook (con tu vault) y abre `http://<ip-de-pushlane-git>:5380`
+   como usuario `admin`.
+
+Notas:
+
+- Technitium solo lee las variables `DNS_SERVER_*` del `.env` en el primer
+  arranque (volumen `dns_config` vacio); cambiarlas despues no tiene efecto.
+  Para reinicializar la configuracion hay que borrar ese volumen.
+- Los hosts enrutan solo `lab.local` a Technitium (split DNS via
+  systemd-resolved); la resolucion externa sigue por el DNS de cloud-init.
+- El daemon de Docker tambien usa Technitium para que los contenedores
+  resuelvan `*.lab.local`; los contenedores creados antes del cambio
+  necesitan recrearse para heredarlo.
+
+## 5. Gitea
 
 1. Abre `http://pushlane-git.lab.local:3000`.
 2. Completa el instalador y crea la organizacion `homelab`.
 3. Crea el repositorio `demo-api` y protege `main`.
 4. Agrega el webhook de Jenkins y un secreto compartido.
 
-## 5. Jenkins
+## 6. Jenkins
 
 1. Abre `http://pushlane-ci.lab.local:8080`.
 2. Recupera la clave inicial desde el contenedor.
@@ -80,7 +112,7 @@ El rol escribe `/opt/pushlane/gitea/.env` (modo `0600`) y este no se versiona.
 > agente en otra maquina, aplica alli la misma configuracion. La Fase 8
 > reemplaza esta excepcion con TLS.
 
-## 6. Primer pipeline
+## 7. Primer pipeline
 
 Publica el contenido del repositorio y coloca `pipelines/Jenkinsfile` como
 `Jenkinsfile` en la raiz del repo de aplicacion, o configura esa ruta en

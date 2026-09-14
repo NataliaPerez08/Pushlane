@@ -4,7 +4,17 @@ all:
     # Registry HTTP del laboratorio; la Fase 8 lo reemplaza con TLS.
     # Debe coincidir con REGISTRY en pipelines/Jenkinsfile.
     lab_registry: pushlane-app.lab.local:5000
+    # Zona autoritativa interna resuelta por Technitium (rol dns).
+    lab_domain: lab.local
+    lab_dns_server: 192.168.10.21
+    # Para correr Ansible detras de un bastion (p.ej. via el host Proxmox):
+    # ansible_ssh_common_args: >-
+    #   -o ProxyJump=root@pve.lab.local -o StrictHostKeyChecking=accept-new
   children:
+    dns:
+      hosts:
+        pushlane-git:
+          ansible_host: 192.168.10.21
     gitea:
       hosts:
         pushlane-git:

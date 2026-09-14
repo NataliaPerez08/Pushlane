@@ -16,3 +16,23 @@
     state: started
     enabled: true
 
+# Split DNS: solo el dominio del lab se enruta al DNS interno (Technitium);
+# la resolucion externa sigue por el DNS de cloud-init y no depende del lab.
+- name: Ensure systemd-resolved drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    mode: "0755"
+  when: lab_dns_server is defined
+
+- name: Route the lab domain to the internal DNS server
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/lab-local.conf
+    mode: "0644"
+    content: |
+      [Resolve]
+      DNS={{ lab_dns_server }}
+      Domains=~{{ lab_domain | default('lab.local') }}
+  when: lab_dns_server is defined
+  notify: Restart systemd-resolved
+

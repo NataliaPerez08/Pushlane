@@ -51,20 +51,25 @@
     state: present
     update_cache: true
 
-# Permite push/pull contra el registry HTTP del laboratorio. Sin esto el
-# agente Jenkins y el host app fallan con:
-# "http: server gave HTTP response to HTTPS client".
-# Ojo: esta tarea gestiona daemon.json completo; cualquier otro ajuste del
-# daemon debe agregarse aqui para no perderlo.
-- name: Allow the lab registry over HTTP
+# daemon.json completo; cualquier otro ajuste del daemon debe agregarse aqui
+# para no perderlo. Contiene:
+# - insecure-registries: push/pull contra el registry HTTP del lab. Sin esto
+#   el agente Jenkins y el host app fallan con:
+#   "http: server gave HTTP response to HTTPS client".
+# - dns: evita el fallback 8.8.8.8 de Docker (el stub de systemd-resolved en
+#   127.0.0.53 no es alcanzable desde el bridge) y da a los contenedores
+#   acceso a la zona interna lab.local. Los contenedores creados antes del
+#   cambio necesitan recrearse para heredarlo.
+- name: Configure the Docker daemon
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json
     mode: "0644"
     content: |
       {
-        "insecure-registries": {{ docker_insecure_registries | to_json }}
+        "insecure-registries": {{ docker_insecure_registries | to_json }}{% if lab_dns_server is defined %},
+        "dns": {{ [lab_dns_server, '1.1.1.1'] | to_json }}{% endif %}
       }
-  when: docker_insecure_registries | length > 0
+  when: docker_insecure_registries | length > 0 or lab_dns_server is defined
   notify: Restart docker
 
 - name: Enable Docker

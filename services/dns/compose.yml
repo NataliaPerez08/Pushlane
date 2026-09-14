@@ -1,0 +1,24 @@
+services:
+  dns:
+    image: docker.io/technitium/dns-server:latest
+    restart: unless-stopped
+    ports:
+      # El 53 se publica solo en la IP del host: el bind comodin 0.0.0.0:53
+      # choca con el stub de systemd-resolved en 127.0.0.53:53.
+      - "${DNS_BIND_IP:-0.0.0.0}:53:53/udp"
+      - "${DNS_BIND_IP:-0.0.0.0}:53:53/tcp"
+      - "5380:5380/tcp"
+    environment:
+      DNS_SERVER_DOMAIN: "${DNS_SERVER_DOMAIN:-dns.lab.local}"
+      DNS_SERVER_ADMIN_PASSWORD: "${DNS_SERVER_ADMIN_PASSWORD:?definir DNS_SERVER_ADMIN_PASSWORD en el .env}"
+      DNS_SERVER_RECURSION: "${DNS_SERVER_RECURSION:-AllowOnlyForPrivateNetworks}"
+      DNS_SERVER_FORWARDERS: "${DNS_SERVER_FORWARDERS:-1.1.1.1,8.8.8.8}"
+    volumes:
+      - dns_config:/etc/dns
+      - dns_logs:/var/log/technitium/dns
+    sysctls:
+      - net.ipv4.ip_local_port_range=1024 65535
+
+volumes:
+  dns_config:
+  dns_logs:

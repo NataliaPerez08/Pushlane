@@ -3,31 +3,67 @@
 El roadmap prioriza un flujo vertical funcional antes de agregar componentes.
 Marca una fase como terminada solo cuando cumple sus criterios de aceptacion.
 
+## Estado actual (2026-09-15)
+
+Verificado contra el cluster Proxmox y las tres VMs del lab. Solo se marcan
+casillas con evidencia verificable.
+
+| Componente | Estado |
+| --- | --- |
+| VMs `pushlane-git/ci/app` (vmid 204/202/203) | Corriendo; SSH y guest agent activos |
+| Gitea (`pushlane-git:3000`) | Contenedores arriba; instalador inicial sin completar |
+| Jenkins (`pushlane-ci:8080`) | Asistente completado; sin plugins, credenciales, nodos ni jobs |
+| Agente JNLP (`pushlane-ci`) | Contenedor arriba pero sin conectar: usa `http://localhost:8080` |
+| Technitium (`pushlane-git:53/5380`) | Corriendo; zona `lab.local` con 3 registros A; gestion via API |
+| Resolucion `*.lab.local` | Configurada (split DNS); resuelve desde las tres VMs |
+| Registry y demo-api (`pushlane-app`) | Rol `app` aplicado (compose instalado); contenedores sin desplegar |
+
+### Bloqueadores conocidos
+
+1. Gitea muestra el asistente de instalacion: falta completarlo, crear la
+   organizacion `homelab`, repos, proteccion de `main` y webhook (Fase 3).
+2. Jenkins quedo en estado basico: sin plugins (Git, Pipeline, Gitea, SSH
+   Agent), sin credencial `pushlane-app-ssh`, sin nodo `pushlane-agent` y con
+   `numExecutors=2` en el controller (Fase 4).
+3. El agente JNLP no puede conectar: `JENKINS_URL=http://localhost:8080`
+   dentro del contenedor. Definir `jenkins_agent_url` en el inventario y
+   registrar primero el nodo en Jenkins; al recrearlo heredara el DNS del
+   daemon y resolvera `*.lab.local`.
+4. El registry (:5000) y demo-api (:8000) siguen sin contenedores en
+   `pushlane-app`: falta arrancar el compose del registry (o el primer
+   pipeline) usando el `.env.example` del rol `app`.
+5. El `.tfstate` y `terraform.tfvars` reales viven en otra maquina; el nodo
+   ECS es ahora nodo de control de Ansible (inventario y vaults propios) pero
+   no puede ejecutar `tofu plan`. Nota: el ejemplo usa 192.168.10.21-23 /
+   vmid 201-203 y el lab real usa 10.0.0.21-23 / vmid 202-204.
+
+Progreso por fase: Fase 0 (4/4), Fase 1 (3/4), Fase 2 (4/4), Fases 3-11 (0).
+
 ## Fase 0 — Diseno y preparacion
 
-- [ ] Reservar tres IPs y crear registros DNS internos.
-- [ ] Crear una plantilla cloud-init en Proxmox.
-- [ ] Crear usuario/token de API con privilegios minimos.
-- [ ] Documentar VLAN, bridge, gateway y almacenamiento elegidos.
+- [x] Reservar tres IPs y crear registros DNS internos.
+- [x] Crear una plantilla cloud-init en Proxmox.
+- [x] Crear usuario/token de API con privilegios minimos.
+- [x] Documentar VLAN, bridge, gateway y almacenamiento elegidos.
 
 **Terminado cuando:** las decisiones estan en `docs/architecture.md` y no hay
 secretos dentro del repositorio.
 
 ## Fase 1 — Infraestructura reproducible
 
-- [ ] Completar `terraform.tfvars`.
-- [ ] Ejecutar `tofu fmt`, `tofu validate`, `tofu plan` y `tofu apply`.
-- [ ] Verificar red y acceso SSH a las tres VMs.
+- [x] Completar `terraform.tfvars`.
+- [x] Ejecutar `tofu fmt`, `tofu validate`, `tofu plan` y `tofu apply`.
+- [x] Verificar red y acceso SSH a las tres VMs.
 - [ ] Probar que un segundo `tofu plan` no produce cambios inesperados.
 
 **Terminado cuando:** las tres VMs pueden recrearse desde cero.
 
 ## Fase 2 — Configuracion con Ansible
 
-- [ ] Generar inventario real desde el archivo de ejemplo.
-- [ ] Instalar Docker Engine y dependencias base.
-- [ ] Aplicar los roles `gitea`, `jenkins` y `app`.
-- [ ] Ejecutar nuevamente el playbook y verificar idempotencia.
+- [x] Generar inventario real desde el archivo de ejemplo.
+- [x] Instalar Docker Engine y dependencias base.
+- [x] Aplicar los roles `gitea`, `jenkins` y `app`.
+- [x] Ejecutar nuevamente el playbook y verificar idempotencia.
 
 **Terminado cuando:** el segundo playbook termina sin cambios injustificados.
 
