@@ -22,7 +22,7 @@ tofu-validate: tofu-fmt
 tofu-plan: tofu-validate
 	tofu -chdir=$(TOFU_DIR) plan -out=pushlane.tfplan
 
-tofu-apply:
+tofu-apply: tofu-plan
 	tofu -chdir=$(TOFU_DIR) apply pushlane.tfplan
 
 tofu-destroy:

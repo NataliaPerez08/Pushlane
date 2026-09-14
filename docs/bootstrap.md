@@ -62,8 +62,14 @@ El rol escribe `/opt/pushlane/gitea/.env` (modo `0600`) y este no se versiona.
 2. Recupera la clave inicial desde el contenedor.
 3. Instala solo los plugins necesarios para Git, Pipeline, Gitea y SSH Agent.
 4. Crea credenciales con los IDs documentados por el `Jenkinsfile`.
-5. Registra un agente Linux con Python, Docker y la etiqueta `docker`; no
-   ejecutes builds de aplicaciones en el controller.
+5. Crea el nodo agente en Jenkins (tipo *inbound*), nombre `pushlane-agent` y
+   etiqueta `docker`. Al guardarlo, Jenkins muestra un secret: definelo como
+   `jenkins_agent_secret` en el inventario real o en un vault
+   (`ansible-vault create group_vars/jenkins/vault.yml`) y vuelve a ejecutar
+   `make ansible-apply ANSIBLE_EXTRA_ARGS="--ask-vault-pass"`. Ansible provee
+   en `pushlane-ci` el contenedor del agente con Docker CLI y Python (bloqueda
+   por el socket del host); el secret activa la conexion JNLP. No ejecutes
+   builds de aplicaciones en el controller.
 6. Crea un Multibranch Pipeline apuntando al repositorio de Gitea.
 
 > El registry del laboratorio usa HTTP. El rol `docker` escribe

@@ -1,0 +1,11 @@
+services:
+  agent:
+    image: pushlane-jenkins-agent:latest
+    restart: unless-stopped
+    environment:
+      JENKINS_URL: "${JENKINS_URL:-http://localhost:8080}"
+      JENKINS_SECRET: "${JENKINS_SECRET:?definir JENKINS_SECRET en el .env}"
+      JENKINS_AGENT_NAME: "${JENKINS_AGENT_NAME:-pushlane-agent}"
+      JENKINS_AGENT_WORKDIR: "/home/jenkins/agent"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

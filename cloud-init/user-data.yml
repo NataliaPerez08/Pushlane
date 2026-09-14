@@ -1,4 +1,7 @@
 #cloud-config
+# Referencia para construir la plantilla cloud-init de Proxmox (nube-init).
+# OpenTofu no la consume: la configuracion de arranque de cada VM se define
+# inline en tofu/main.tf (initialization/user_account).
 package_update: true
 packages:
   - qemu-guest-agent

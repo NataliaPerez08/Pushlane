@@ -9,6 +9,8 @@
       - ca-certificates
       - curl
       - python3-debian
+      # SDK de Python para los modulos community.docker (docker_image build).
+      - python3-docker
     state: present
     update_cache: true
 

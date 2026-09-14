@@ -16,3 +16,45 @@
     project_src: /opt/pushlane/jenkins
     state: present
 
+- name: Fail if the Jenkins agent secret is missing
+  ansible.builtin.assert:
+    that:
+      - jenkins_agent_secret is defined
+      - jenkins_agent_secret | length > 0
+    fail_msg: >-
+      Define jenkins_agent_secret (crea el nodo inbound en Jenkins y copia su
+      secret) en el inventario real o en un vault; ver docs/bootstrap.md.
+
+- name: Create Jenkins agent service directory
+  ansible.builtin.file:
+    path: /opt/pushlane/jenkins-agent
+    state: directory
+    mode: "0750"
+
+- name: Install Jenkins agent Compose definition
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../services/jenkins/agent/compose.yml"
+    dest: /opt/pushlane/jenkins-agent/compose.yml
+    mode: "0640"
+
+- name: Install Jenkins agent environment file
+  ansible.builtin.copy:
+    dest: /opt/pushlane/jenkins-agent/.env
+    mode: "0600"
+    content: |
+      JENKINS_SECRET={{ jenkins_agent_secret }}
+      JENKINS_URL={{ jenkins_agent_url | default('http://localhost:8080') }}
+      JENKINS_AGENT_NAME={{ jenkins_agent_name | default('pushlane-agent') }}
+
+- name: Build the Jenkins agent image
+  community.docker.docker_image:
+    name: pushlane-jenkins-agent:latest
+    source: build
+    build:
+      path: "{{ playbook_dir }}/../../services/jenkins/agent"
+
+- name: Start Jenkins agent
+  community.docker.docker_compose_v2:
+    project_src: /opt/pushlane/jenkins-agent
+    state: present
+
