@@ -1,5 +1,10 @@
 # Bootstrap
 
+> Opera todo desde un nodo de control con acceso al Proxmox y a las VMs (en
+> este lab, un ECS en la misma Tailnet que llega por `ProxyJump` via el host
+> PVE). Ese nodo concentra el venv de Ansible, el `.env` con credenciales,
+> los vaults y el `terraform.tfstate`/`terraform.tfvars` reales (gitignored).
+
 ## 1. Proxmox
 
 1. Crea una plantilla Debian/Ubuntu con cloud-init y QEMU Guest Agent.
@@ -97,9 +102,9 @@ Notas:
 5. Crea el nodo agente en Jenkins (tipo *inbound*), nombre `pushlane-agent` y
    etiqueta `docker`. Al guardarlo, Jenkins muestra un secret: definelo como
    `jenkins_agent_secret` en el inventario real o en un vault
-   (`ansible-vault create group_vars/jenkins/vault.yml`) y vuelve a ejecutar
+   (`ansible-vault create inventory/group_vars/jenkins/vault.yml`) y vuelve a ejecutar
    `make ansible-apply ANSIBLE_EXTRA_ARGS="--ask-vault-pass"`. Ansible provee
-   en `pushlane-ci` el contenedor del agente con Docker CLI y Python (bloqueda
+   en `pushlane-ci` el contenedor del agente con Docker CLI y Python (bloqueada
    por el socket del host); el secret activa la conexion JNLP. No ejecutes
    builds de aplicaciones en el controller.
 6. Crea un Multibranch Pipeline apuntando al repositorio de Gitea.

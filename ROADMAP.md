@@ -40,6 +40,9 @@ casillas con evidencia verificable.
 
 Progreso por fase: Fase 0 (4/4), Fase 1 (4/4), Fase 2 (4/4), Fases 3-11 (0).
 
+Los hallazgos de auditoria y su remediacion se registran en
+`docs/remediaciones.md`.
+
 ### Siguiente: Fase 3 (plan acordado)
 
 1. Completar la instalacion de Gitea sin asistente web: `INSTALL_LOCK=true`
@@ -79,6 +82,10 @@ secretos dentro del repositorio.
 - [x] Probar que un segundo `tofu plan` no produce cambios inesperados.
 
 **Terminado cuando:** las tres VMs pueden recrearse desde cero.
+
+Nota: `tofu fmt -check`, `tofu validate` y un segundo plan sin cambios
+verificados desde el nodo de control (ECS). La recreacion real
+(destroy/apply) no se ha ensayado; el ensayo esta en la Fase 10.
 
 ## Fase 2 — Configuracion con Ansible
 

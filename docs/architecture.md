@@ -44,6 +44,15 @@ flowchart TD
 | pushlane-ci | vmid 202, 10.0.0.22 (Jenkins) |
 | pushlane-app | vmid 203, 10.0.0.23 (Registry, demo-api) |
 
+## Nodo de control
+
+- El laboratorio se opera desde un ECS en la Tailnet del Proxmox; alcanza
+  las VMs con `ProxyJump` a traves del host PVE (root via SSH).
+- El nodo de control concentra el venv de Ansible, los vaults, el `.env`
+  con credenciales y el `terraform.tfstate`/`terraform.tfvars` reales
+  (todos gitignored). El estado se migro desde el nodo original
+  (natalia-vivobook); el ECS es ahora la version autoritativa.
+
 ## DNS interno
 
 - Technitium DNS Server contenerizado en `pushlane-git` (rol `dns`): zona
@@ -62,7 +71,10 @@ flowchart TD
 
 ## Limites de confianza
 
-- Solo la LAN administrativa accede a Proxmox y SSH.
+- Proxmox y SSH solo desde la LAN administrativa y el nodo de control
+  (Tailnet).
+- OpenTofu usa el token `pushlane@pve!tofu` con `privsep=1`, ACLs acotadas
+  a las VMs del lab y a `local-lvm` (ver `docs/remediaciones.md`).
 - Jenkins usa credenciales dedicadas para Gitea, registry y despliegue.
 - La aplicacion no recibe acceso al socket de Docker ni a credenciales de CI.
 - Los secretos se inyectan en tiempo de ejecucion y nunca se versionan.
