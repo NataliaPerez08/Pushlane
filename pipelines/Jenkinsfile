@@ -1,3 +1,12 @@
+def PREV_IMAGE = ''
+
+def healthCheck() {
+    retry(5) {
+        sleep 3
+        sh 'curl --fail --silent http://pushlane-app.lab.local:8000/health'
+    }
+}
+
 pipeline {
     agent { label 'docker' }
 
@@ -39,6 +48,15 @@ pipeline {
             when { branch 'main' }
             steps {
                 sshagent(credentials: ['pushlane-app-ssh']) {
+                    script {
+                        PREV_IMAGE = sh(
+                            script: '''
+                                ssh -o StrictHostKeyChecking=yes devops@pushlane-app.lab.local \
+                                  'cd /opt/pushlane/app && CID=$(docker compose ps -q demo-api) && if [ -n "$CID" ]; then IMG=$(docker inspect --format "{{.Config.Image}}" "$CID"); else IMG=none; fi && echo "$IMG"'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+                    }
                     sh '''
                         ssh -o StrictHostKeyChecking=yes devops@pushlane-app.lab.local \
                           "cd /opt/pushlane/app && APP_IMAGE=$IMAGE docker compose up -d demo-api"
@@ -49,16 +67,31 @@ pipeline {
 
         stage('Health Check') {
             when { branch 'main' }
-            steps {
-                retry(5) {
-                    sleep 3
-                    sh 'curl --fail --silent http://pushlane-app.lab.local:8000/health'
-                }
-            }
+            steps { healthCheck() }
         }
     }
 
     post {
         always { deleteDir() }
+        failure {
+            script {
+                if (PREV_IMAGE && PREV_IMAGE != 'none') {
+                    echo "Health check failed, rolling back to ${PREV_IMAGE}"
+                    sshagent(credentials: ['pushlane-app-ssh']) {
+                        sh "ssh -o StrictHostKeyChecking=yes devops@pushlane-app.lab.local \"cd /opt/pushlane/app && APP_IMAGE=${PREV_IMAGE} docker compose up -d demo-api\""
+                    }
+                    echo 'Rollback deployed, re-checking health'
+                    try {
+                        healthCheck()
+                        currentBuild.result = 'UNSTABLE'
+                        echo 'Recovered after rollback'
+                    } catch (err) {
+                        echo "Rollback also unhealthy: ${err}"
+                    }
+                } else if (PREV_IMAGE) {
+                    echo 'No previous image to roll back to (first deploy)'
+                }
+            }
+        }
     }
 }
