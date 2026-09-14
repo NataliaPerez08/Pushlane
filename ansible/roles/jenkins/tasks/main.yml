@@ -46,12 +46,19 @@
       JENKINS_URL={{ jenkins_agent_url | default('http://localhost:8080') }}
       JENKINS_AGENT_NAME={{ jenkins_agent_name | default('pushlane-agent') }}
 
+- name: Copy Jenkins agent build context
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../services/jenkins/agent/"
+    dest: /opt/pushlane/jenkins-agent/context/
+    mode: "0644"
+
 - name: Build the Jenkins agent image
   community.docker.docker_image:
     name: pushlane-jenkins-agent:latest
     source: build
+    force_source: true
     build:
-      path: "{{ playbook_dir }}/../../services/jenkins/agent"
+      path: /opt/pushlane/jenkins-agent/context
 
 - name: Start Jenkins agent
   community.docker.docker_compose_v2:
