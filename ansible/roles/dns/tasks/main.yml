@@ -131,3 +131,28 @@
     (item ~ '.' ~ lab_domain) not in dns_zone_a_records | map(attribute='name') | list
     or (dns_zone_a_records | selectattr('name', 'equalto', item ~ '.' ~ lab_domain)
        | map(attribute='rData.ipAddress') | list | first | default('')) != hostvars[item].ansible_host
+
+# Registros de servicio (gitea, jenkins, registry, ...) definidos en el
+# inventario: mismo patron idempotente que los registros de host.
+- name: Ensure an A record exists for every lab service
+  ansible.builtin.uri:
+    url: http://localhost:5380/api/zones/records/add
+    method: POST
+    headers:
+      Authorization: "Bearer {{ dns_api_token }}"
+    body_format: form-urlencoded
+    body:
+      domain: "{{ item.key }}.{{ lab_domain }}"
+      zone: "{{ lab_domain }}"
+      type: A
+      ttl: "{{ dns_record_ttl | default(300) }}"
+      ipAddress: "{{ item.value }}"
+      overwrite: "true"
+    status_code: 200
+  loop: "{{ lab_service_records | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}.{{ lab_domain }} -> {{ item.value }}"
+  when: >
+    (item.key ~ '.' ~ lab_domain) not in dns_zone_a_records | map(attribute='name') | list
+    or (dns_zone_a_records | selectattr('name', 'equalto', item.key ~ '.' ~ lab_domain)
+       | map(attribute='rData.ipAddress') | list | first | default('')) != item.value

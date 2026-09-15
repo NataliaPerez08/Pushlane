@@ -9,6 +9,7 @@ realizan contra el cluster Proxmox y los documentos del repositorio.
 | H-001 | 2026-09-15 | Token de API de Proxmox con privilegios de root | Alta | Remediado |
 | H-002 | 2026-09-15 | Ruta de vault incorrecta en la documentacion | Baja | Remediado |
 | H-003 | 2026-09-15 | Recreacion de las VMs desde cero no ensayada | Media | Aceptado (Fase 10) |
+| H-004 | 2026-09-15 | Contrasenas de usuarios de Gitea impresas en logs de apply | Media | Remediado |
 
 ## H-001 - Token de API de Proxmox con privilegios de root
 
@@ -78,3 +79,24 @@ una VM, reconstruirla y restaurar los datos") para no arriesgar los
 servicios que ya corren.
 
 **Evidencia:** nota agregada en la seccion Fase 1 del ROADMAP.
+
+## H-004 - Contrasenas de usuarios de Gitea impresas en logs de apply
+
+**Hallazgo:** las tareas "Look up the lab users in Gitea" y "Add the lab
+users to the developers team" iteraban el diccionario completo
+`gitea_lab_users`; el display de cada item incluia la contrasena en
+texto claro. Las tareas de creacion ya usaban `no_log`, pero el bucle de
+verificacion/agregacion no.
+
+**Remediacion:** `loop_control.label` con el nombre de usuario en ambas
+tareas (el label sustituye al item en el log sin esconder el estado),
+purga de los logs de apply que contenian los valores y verificacion con
+grep de todos los valores de `.env` contra los logs nuevos: sin
+coincidencias. La tarea de creacion mantiene `no_log`.
+
+**Evidencia:** apply de verificacion con `changed=0` y seis menciones de
+"password" todas benignas (nombres de tareas y valores censurados).
+
+**Recomendacion:** rotar las contrasenas de `devops` y `developer`
+(`PATCH /api/v1/admin/users/{username}`) si los logs fugados salieron
+del nodo de control; en el lab se evaluo como riesgo aceptable.

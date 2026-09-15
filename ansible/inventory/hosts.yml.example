@@ -7,6 +7,14 @@ all:
     # Zona autoritativa interna resuelta por Technitium (rol dns).
     lab_domain: lab.local
     lab_dns_server: 192.168.10.21
+    # Bastion para los git push del nodo de control hacia Gitea (:2222).
+    lab_jump_host: root@pve.lab.local
+    # Registros de servicio en la zona lab.local (rol dns).
+    lab_service_records:
+      gitea: 192.168.10.21
+      jenkins: 192.168.10.22
+      registry: 192.168.10.23
+      demo-api: 192.168.10.23
     # Para correr Ansible detras de un bastion (p.ej. via el host Proxmox):
     # ansible_ssh_common_args: >-
     #   -o ProxyJump=root@pve.lab.local -o StrictHostKeyChecking=accept-new

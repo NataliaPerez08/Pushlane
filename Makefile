@@ -36,6 +36,12 @@ ansible-check:
 ansible-apply:
 	cd $(ANSIBLE_DIR) && ansible-playbook -i $(INVENTORY) $(PLAYBOOK) $(ANSIBLE_EXTRA_ARGS)
 
+# Respaldo de Gitea bajo demanda: el dump y su copia fuera del
+# contenedor estan etiquetados [never, backup] para no romper la
+# idempotencia de un apply normal.
+gitea-backup:
+	cd $(ANSIBLE_DIR) && ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --tags backup --limit pushlane-git $(ANSIBLE_EXTRA_ARGS)
+
 test:
 	cd apps/demo-api && python -m pytest tests
 

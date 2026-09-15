@@ -17,8 +17,8 @@
       - gitea_db_password is defined
       - gitea_db_password | length > 0
     fail_msg: >-
-      Define gitea_db_password en el inventario real (hosts.yml, gitignored) o
-      en un vault (ansible-vault create group_vars/gitea/vault.yml). Ver
+      Define gitea_db_password en un vault
+      (ansible-vault create inventory/group_vars/gitea/vault.yml). Ver
       docs/bootstrap.md.
 
 - name: Install Gitea environment file
@@ -32,3 +32,338 @@
     project_src: /opt/pushlane/gitea
     state: present
 
+# Con INSTALL_LOCK=true la instancia arranca ya instalada (sin asistente);
+# el admin se crea por CLI con check-then-act.
+- name: Wait for the Gitea API
+  ansible.builtin.uri:
+    url: http://localhost:3000/api/v1/version
+  register: gitea_api
+  until: gitea_api.status == 200
+  retries: 30
+  delay: 5
+  changed_when: false
+
+- name: List Gitea users
+  community.docker.docker_container_exec:
+    container: gitea-gitea-1
+    command: gitea admin user list
+    user: git
+  register: gitea_users
+  changed_when: false
+
+- name: Create the Gitea admin
+  community.docker.docker_container_exec:
+    container: gitea-gitea-1
+    command: >-
+      gitea admin user create --admin
+      --username {{ gitea_admin_user }}
+      --password {{ gitea_admin_password }}
+      --email {{ gitea_admin_email }}
+      --must-change-password=false
+    user: git
+  when: gitea_admin_user not in gitea_users.stdout
+  no_log: true
+
+- name: Check the lab organization
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/orgs/{{ gitea_org_name }}"
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: gitea_org
+  changed_when: false
+
+- name: Create the lab organization
+  ansible.builtin.uri:
+    url: http://localhost:3000/api/v1/orgs
+    method: POST
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      username: "{{ gitea_org_name }}"
+    status_code: 201
+  when: gitea_org.status == 404
+
+- name: Look up the lab users in Gitea
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/users/{{ item.key }}"
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  loop: "{{ gitea_lab_users | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: gitea_user_checks
+  changed_when: false
+
+- name: Create the missing lab users
+  ansible.builtin.uri:
+    url: http://localhost:3000/api/v1/admin/users
+    method: POST
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      username: "{{ item.item.key }}"
+      email: "{{ item.item.value.email }}"
+      password: "{{ item.item.value.password }}"
+      must_change_password: false
+    status_code: 201
+  loop: "{{ gitea_user_checks.results }}"
+  when: item.status == 404
+  no_log: true
+
+- name: Check the lab repositories
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/repos/{{ gitea_org_name }}/{{ item }}"
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  loop: "{{ gitea_repos }}"
+  register: gitea_repo_checks
+  changed_when: false
+
+- name: Create the lab repositories
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/orgs/{{ gitea_org_name }}/repos"
+    method: POST
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "{{ item.item }}"
+      private: true
+      default_branch: main
+      auto_init: false
+    status_code: 201
+  loop: "{{ gitea_repo_checks.results }}"
+  when: item.status == 404
+
+- name: List the admin SSH keys
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/users/{{ gitea_admin_user }}/keys"
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+  register: gitea_admin_keys
+  changed_when: false
+
+- name: Register the control node key with the admin
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/admin/users/{{ gitea_admin_user }}/keys"
+    method: POST
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      title: "{{ gitea_control_key_title }}"
+      key: "{{ lookup('ansible.builtin.file', '~/.ssh/id_ed25519.pub') }}"
+    status_code: 201
+  when: gitea_control_key_title not in gitea_admin_keys.json | map(attribute='title') | list
+
+# Los push salen del nodo de control via ProxyJump del PVE; ls-remote
+# compara HEAD antes de empujar (idempotente).
+- name: Read the remote state of the infrastructure repository
+  ansible.builtin.command:
+    cmd: "git ls-remote ssh://git@{{ ansible_host }}:2222/{{ gitea_org_name }}/infrastructure.git HEAD"
+  environment:
+    GIT_SSH_COMMAND: >-
+      ssh -o ProxyJump={{ lab_jump_host }}
+      -o StrictHostKeyChecking=accept-new -o BatchMode=yes
+  delegate_to: localhost
+  register: gitea_infra_remote
+  failed_when: false
+  changed_when: false
+
+- name: Read the local HEAD of the infrastructure repository
+  ansible.builtin.command:
+    cmd: git rev-parse HEAD
+    chdir: "{{ playbook_dir }}/../.."
+  delegate_to: localhost
+  register: gitea_local_head
+  changed_when: false
+
+- name: Push the infrastructure repository
+  ansible.builtin.command:
+    cmd: "git push ssh://git@{{ ansible_host }}:2222/{{ gitea_org_name }}/infrastructure.git main"
+    chdir: "{{ playbook_dir }}/../.."
+  environment:
+    GIT_SSH_COMMAND: >-
+      ssh -o ProxyJump={{ lab_jump_host }}
+      -o StrictHostKeyChecking=accept-new -o BatchMode=yes
+  delegate_to: localhost
+  when: >
+    gitea_infra_remote.stdout == ''
+    or gitea_infra_remote.stdout.split('\t')[0] != gitea_local_head.stdout
+
+- name: Read the remote state of the demo-api repository
+  ansible.builtin.command:
+    cmd: "git ls-remote ssh://git@{{ ansible_host }}:2222/{{ gitea_org_name }}/demo-api.git HEAD"
+  environment:
+    GIT_SSH_COMMAND: >-
+      ssh -o ProxyJump={{ lab_jump_host }}
+      -o StrictHostKeyChecking=accept-new -o BatchMode=yes
+  delegate_to: localhost
+  register: gitea_demo_remote
+  failed_when: false
+  changed_when: false
+
+# demo-api se prepara desde apps/demo-api solo la primera vez (remoto
+# vacio); despues el contenido flye por PRs.
+- name: Prepare the demo-api repository
+  when: gitea_demo_remote.stdout == ''
+  block:
+    - name: Clean the demo-api working copy
+      ansible.builtin.file:
+        path: /tmp/opencode/demo-api
+        state: absent
+
+    - name: Copy the demo-api sources
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../apps/demo-api/"
+        dest: /tmp/opencode/demo-api/
+
+    - name: Initialize the demo-api git repository
+      ansible.builtin.command:
+        cmd: git init -b main .
+        chdir: /tmp/opencode/demo-api
+
+    - name: Stage the demo-api sources
+      ansible.builtin.command:
+        cmd: git add -A
+        chdir: /tmp/opencode/demo-api
+
+    - name: Commit the demo-api sources
+      ansible.builtin.command:
+        cmd: >-
+          git -c user.name=pushlane -c user.email={{ gitea_admin_email }}
+          commit -m "demo-api: version inicial"
+        chdir: /tmp/opencode/demo-api
+
+    - name: Push the demo-api repository
+      ansible.builtin.command:
+        cmd: "git push ssh://git@{{ ansible_host }}:2222/{{ gitea_org_name }}/demo-api.git main"
+        chdir: /tmp/opencode/demo-api
+      environment:
+        GIT_SSH_COMMAND: >-
+          ssh -o ProxyJump={{ lab_jump_host }}
+          -o StrictHostKeyChecking=accept-new -o BatchMode=yes
+  delegate_to: localhost
+
+# Proteccion de main: sin push directo; los required status checks se
+# agregan en la Fase 5 (endpoint 1.24: branch_protections).
+- name: Check the protection of the main branch
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/repos/{{ gitea_org_name }}/{{ item }}/branch_protections/main"
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  loop: "{{ gitea_repos }}"
+  register: gitea_bp_checks
+  changed_when: false
+
+- name: Protect the main branch
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/repos/{{ gitea_org_name }}/{{ item.item }}/branch_protections"
+    method: POST
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      branch_name: main
+      enable_push: false
+      block_on_rejected_reviews: true
+    status_code: 201
+  loop: "{{ gitea_bp_checks.results }}"
+  when: item.status == 404
+
+# Equipo con acceso de escritura a los repos privados de la organizacion.
+- name: List the organization teams
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/orgs/{{ gitea_org_name }}/teams"
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+  register: gitea_teams
+  changed_when: false
+
+- name: Create the developers team
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/orgs/{{ gitea_org_name }}/teams"
+    method: POST
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "{{ gitea_team_name }}"
+      permission: write
+      units: [repo.code, repo.issues, repo.pulls]
+      includes_all_repositories: true
+    status_code: 201
+  when: gitea_team_name not in gitea_teams.json | map(attribute='name') | list
+
+- name: Reload the organization teams
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/orgs/{{ gitea_org_name }}/teams"
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+  register: gitea_teams_full
+  changed_when: false
+
+- name: List the developers team members
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/teams/{{ gitea_team_id }}/members"
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+  vars:
+    gitea_team_id: "{{ gitea_teams_full.json | selectattr('name', 'equalto', gitea_team_name) | map(attribute='id') | join('') }}"
+  register: gitea_team_members
+  changed_when: false
+
+- name: Add the lab users to the developers team
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/teams/{{ gitea_team_id }}/members/{{ item.key }}"
+    method: PUT
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    status_code: 204
+  vars:
+    gitea_team_id: "{{ gitea_teams_full.json | selectattr('name', 'equalto', gitea_team_name) | map(attribute='id') | join('') }}"
+  loop: "{{ gitea_lab_users | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: item.key not in gitea_team_members.json | map(attribute='login') | list
+
+# El respaldo se ejecuta bajo demanda (tags backup) para no romper la
+# idempotencia de un apply normal.
+- name: Create the Gitea backups directory
+  ansible.builtin.file:
+    path: /opt/pushlane/backups
+    state: directory
+    mode: "0750"
+
+- name: Dump Gitea
+  community.docker.docker_container_exec:
+    container: gitea-gitea-1
+    command: gitea dump --type zip -f /tmp/gitea-dump.zip
+    user: git
+  tags: [never, backup]
+
+- name: Copy the Gitea dump out of the container
+  ansible.builtin.command:
+    cmd: docker cp gitea-gitea-1:/tmp/gitea-dump.zip /opt/pushlane/backups/gitea-dump-latest.zip
+  tags: [never, backup]

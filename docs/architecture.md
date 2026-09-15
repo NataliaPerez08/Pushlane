@@ -75,6 +75,8 @@ flowchart TD
   (Tailnet).
 - OpenTofu usa el token `pushlane@pve!tofu` con `privsep=1`, ACLs acotadas
   a las VMs del lab y a `local-lvm` (ver `docs/remediaciones.md`).
+- Gitea: repos privados, registro publico deshabilitado y `main`
+  protegido; los cambios solo entran por PR.
 - Jenkins usa credenciales dedicadas para Gitea, registry y despliegue.
 - La aplicacion no recibe acceso al socket de Docker ni a credenciales de CI.
 - Los secretos se inyectan en tiempo de ejecucion y nunca se versionan.

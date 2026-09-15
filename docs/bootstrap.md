@@ -88,10 +88,20 @@ Notas:
 
 ## 5. Gitea
 
-1. Abre `http://pushlane-git.lab.local:3000`.
-2. Completa el instalador y crea la organizacion `homelab`.
-3. Crea el repositorio `demo-api` y protege `main`.
-4. Agrega el webhook de Jenkins y un secreto compartido.
+1. No hay asistente web: el rol `gitea` fija `INSTALL_LOCK=true`, los
+   dominios (`gitea.lab.local`, SSH en `2222`) y deshabilita el registro
+   publico antes del primer arranque.
+2. Ejecuta `make ansible-apply`: el rol crea el admin `gitea-admin` por
+   CLI, la organizacion `homelab`, los repos privados `demo-api` e
+   `infrastructure`, los usuarios `devops` y `developer` (equipo
+   `developers`, escritura via `units_map`), registra la llave publica
+   del nodo de control como llave del admin, empuja el contenido inicial
+   por SSH (`:2222`) y protege `main` (push directo bloqueado, cambios
+   solo por PR). El push del repo `infrastructure` envia la historia
+   completa desde el nodo de control.
+3. El webhook de Jenkins y su secreto compartido se configuran en la
+   Fase 5.
+4. Respaldos: `make gitea-backup` y `docs/runbooks/gitea-backup.md`.
 
 ## 6. Jenkins
 

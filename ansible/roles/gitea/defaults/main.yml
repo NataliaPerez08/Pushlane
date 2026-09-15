@@ -1,0 +1,17 @@
+---
+# Identidad de la instancia; los passwords viven en el vault del grupo gitea.
+gitea_org_name: homelab
+gitea_admin_user: gitea-admin
+gitea_admin_email: gitea-admin@lab.local
+gitea_repos:
+  - demo-api
+  - infrastructure
+gitea_lab_users:
+  devops:
+    email: devops@lab.local
+    password: "{{ devops_user_password }}"
+  developer:
+    email: developer@lab.local
+    password: "{{ developer_user_password }}"
+gitea_control_key_title: pushlane-ecs
+gitea_team_name: developers
