@@ -258,8 +258,11 @@
           -o StrictHostKeyChecking=accept-new -o BatchMode=yes
   delegate_to: localhost
 
-# Proteccion de main: sin push directo; los required status checks se
-# agregan en la Fase 5 (endpoint 1.24: branch_protections).
+# Proteccion de main: en Gitea, enable_push=false bloquea a TODOS (la
+# whitelist no aplica). El modo correcto para el lab es enable_push=true +
+# whitelist: solo la identidad del pipeline (gitea-admin, llave del nodo de
+# control) puede empujar main; las personas trabajan por PR. Los required
+# status checks se agregan en la Fase 5 (endpoint 1.24: branch_protections).
 - name: Check the protection of the main branch
   ansible.builtin.uri:
     url: "http://localhost:3000/api/v1/repos/{{ gitea_org_name }}/{{ item }}/branch_protections/main"
@@ -281,11 +284,63 @@
     body_format: json
     body:
       branch_name: main
-      enable_push: false
+      enable_push: true
+      enable_push_whitelist: true
+      push_whitelist_usernames:
+        - "{{ gitea_admin_user }}"
       block_on_rejected_reviews: true
     status_code: 201
   loop: "{{ gitea_bp_checks.results }}"
   when: item.status == 404
+
+- name: Align the main branch protection with the desired whitelist
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/repos/{{ gitea_org_name }}/{{ item.item }}/branch_protections/main"
+    method: PATCH
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      enable_push: true
+      enable_push_whitelist: true
+      push_whitelist_usernames:
+        - "{{ gitea_admin_user }}"
+      block_on_rejected_reviews: true
+    status_code: 200
+  loop: "{{ gitea_bp_checks.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: >-
+    item.status == 200 and
+    (not item.json.enable_push or
+     not item.json.enable_push_whitelist or
+     gitea_admin_user not in (item.json.push_whitelist_usernames | default([])))
+
+# Fase 5: los merges a main exigen el check del pipeline (scope = repos con
+# CI; demo-api no debe quedarse bloqueado sin contexto que lo valide).
+- name: Require the CI status check on main
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/v1/repos/{{ gitea_org_name }}/{{ item.item }}/branch_protections/main"
+    method: PATCH
+    url_username: "{{ gitea_admin_user }}"
+    url_password: "{{ gitea_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      enable_status_check: true
+      status_check_contexts:
+        - "{{ gitea_status_check_context }}"
+    status_code: 200
+  loop: "{{ gitea_bp_checks.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: >-
+    item.status == 200 and
+    item.item in gitea_status_check_repos and
+    (not item.json.enable_status_check or
+     item.json.status_check_contexts is none or
+     gitea_status_check_context not in (item.json.status_check_contexts | default([])))
 
 # Equipo con acceso de escritura a los repos privados de la organizacion.
 - name: List the organization teams

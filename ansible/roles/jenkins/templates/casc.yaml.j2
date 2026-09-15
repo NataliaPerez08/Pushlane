@@ -1,0 +1,56 @@
+jenkins:
+  # Los builds nunca corren en el controller: solo en el agente docker.
+  numExecutors: 0
+  authorizationStrategy:
+    globalMatrix:
+      permissions:
+        - "Overall/Read:authenticated"
+        - "Overall/Administer:{{ jenkins_admin_user }}"
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "{{ jenkins_admin_user }}"
+          name: "Administrador del laboratorio"
+          password: "{{ jenkins_admin_password }}"
+  nodes:
+    - permanent:
+        name: "{{ jenkins_agent_name }}"
+        remoteFS: /home/jenkins/agent
+        labelString: "{{ jenkins_agent_label }}"
+        launcher:
+          jnlp:
+            workDirSettings:
+              disabled: true
+
+unclassified:
+  location:
+    url: "http://jenkins.{{ lab_domain }}:8080/"
+  giteaServers:
+    servers:
+      - serverUrl: "http://gitea.{{ lab_domain }}:3000"
+        manageHooks: false
+        credentialsId: ""
+
+# Nota: el dominio global se omite (forma canonica de JCasC); envolverlo en
+# "domain: name: global" hace que el bloque se ignore en silencio.
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "{{ jenkins_gitea_credentials_id }}"
+              username: "{{ jenkins_gitea_username }}"
+              password: "{{ hostvars['pushlane-git'].gitea_jenkins_password }}"
+              description: "Usuario jenkins de Gitea (clone y estados de PR)"
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: "{{ jenkins_ssh_credentials_id }}"
+              username: devops
+              passphrase: ""
+              description: "Despliegue por SSH hacia pushlane-app"
+              privateKeySource:
+                directEntry:
+                  privateKey: |
+                    {{ lookup('file', jenkins_deploy_key) | indent(width=20, first=false) }}

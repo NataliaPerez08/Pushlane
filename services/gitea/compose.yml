@@ -28,6 +28,9 @@ services:
       GITEA__server__SSH_PORT: "2222"
       # Las cuentas se crean via API/CLI, no por registro abierto.
       GITEA__service__DISABLE_REGISTRATION: "true"
+      # Gitea 1.24 restringe los webhooks salientes por defecto; permitir
+      # el envío a hosts internos (RFC1918) para que CI alcance Jenkins.
+      GITEA__webhook__ALLOWED_HOST_LIST: "private"
     ports:
       - "3000:3000"
       - "2222:22"

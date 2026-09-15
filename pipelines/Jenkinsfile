@@ -27,7 +27,18 @@ pipeline {
                         python3 -m venv .venv
                         .venv/bin/pip install -r requirements-dev.txt
                         .venv/bin/ruff check app tests
-                        PYTHONPATH=. .venv/bin/pytest -q
+                        PYTHONPATH=. .venv/bin/pytest -q --junitxml=results/pytest.xml
+                    '''
+                }
+            }
+        }
+
+        stage('Dependency Scan') {
+            steps {
+                dir('apps/demo-api') {
+                    sh '''
+                        .venv/bin/pip install -q pip-audit
+                        .venv/bin/pip-audit -r requirements.txt
                     '''
                 }
             }
@@ -36,6 +47,18 @@ pipeline {
         stage('Build') {
             steps {
                 sh 'docker build -t "$IMAGE" apps/demo-api'
+            }
+        }
+
+        stage('Image Scan') {
+            steps {
+                sh '''
+                    mkdir -p results
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                        aquasec/trivy:0.57.1 image --quiet --ignore-unfixed --scanners vuln \
+                        --severity CRITICAL --exit-code 1 --format json \
+                        "$IMAGE" > results/trivy.json
+                '''
             }
         }
 
@@ -72,7 +95,11 @@ pipeline {
     }
 
     post {
-        always { deleteDir() }
+        always {
+            junit allowEmptyResults: true, testResults: 'results/pytest.xml'
+            archiveArtifacts allowEmptyArchive: true, artifacts: 'results/*'
+            deleteDir()
+        }
         failure {
             script {
                 if (PREV_IMAGE && PREV_IMAGE != 'none') {

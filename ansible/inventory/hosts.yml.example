@@ -7,6 +7,8 @@ all:
     # Zona autoritativa interna resuelta por Technitium (rol dns).
     lab_domain: lab.local
     lab_dns_server: 192.168.10.21
+    # URL que el agente JNLP usa para alcanzar el controller.
+    jenkins_agent_url: http://jenkins.lab.local:8080
     # Bastion para los git push del nodo de control hacia Gitea (:2222).
     lab_jump_host: root@pve.lab.local
     # Registros de servicio en la zona lab.local (rol dns).

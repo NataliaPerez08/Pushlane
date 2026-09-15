@@ -1,0 +1,7 @@
+git
+workflow-aggregator
+gitea
+ssh-agent
+configuration-as-code
+matrix-auth
+junit

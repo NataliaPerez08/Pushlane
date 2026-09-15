@@ -1,0 +1,28 @@
+---
+# Identidad del controller. Los secretos viven en los vaults de grupo:
+# jenkins_admin_password en el grupo jenkins y gitea_jenkins_password en el
+# grupo gitea (el usuario jenkins de Gitea lo crea el rol gitea).
+jenkins_admin_user: jenkins-admin
+jenkins_agent_name: pushlane-agent
+jenkins_agent_label: docker
+jenkins_agent_url: "http://jenkins.{{ lab_domain }}:8080"
+
+# Llave SSH dedicada para el despliegue (credencial pushlane-app-ssh): se
+# genera en el nodo de control y el rol app la agrega al authorized_keys de
+# devops en pushlane-app.
+jenkins_deploy_key: "{{ lookup('env', 'HOME') }}/.ssh/pushlane-ci-deploy"
+
+# Credenciales registradas por JCasC; los IDs los consume el Jenkinsfile.
+jenkins_gitea_username: jenkins
+jenkins_gitea_credentials_id: gitea-jenkins
+jenkins_ssh_credentials_id: pushlane-app-ssh
+
+# Job multibranch sobre el repo infrastructure (incluye apps/demo-api y
+# pipelines/Jenkinsfile en su raiz).
+jenkins_job_name: infrastructure
+jenkins_gitea_repo: infrastructure
+jenkins_script_path: pipelines/Jenkinsfile
+
+# Ubicaciones en el host y dentro del contenedor del controller.
+jenkins_container: jenkins-jenkins-1
+jenkins_cli_path: /tmp/cli.jar
