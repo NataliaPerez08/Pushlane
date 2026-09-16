@@ -13,6 +13,7 @@ realizan contra el cluster Proxmox y los documentos del repositorio.
 | H-005 | 2026-09-16 | Gitea 1.24 segaba las entregas del webhook (ALLOWED_HOST_LIST) | Alta | Remediado |
 | H-006 | 2026-09-16 | Job multibranch con 500 en el parent (folderViews sin owner) | Alta | Remediado |
 | H-007 | 2026-09-16 | Debug de stores de CI con configurantes XStream no documentados | Baja | Documentado |
+| H-008 | 2026-09-16 | Ruta de escaneo: una rama concreta no se descubria en el multibranch | Media | Remediado |
 
 ## H-001 - Token de API de Proxmox con privilegios de root
 
@@ -160,3 +161,44 @@ necesidad de ampliar la matrix); y el `<owner>` del holder (H-006).
 **Evidencia:** jobs creados desde la plantilla levantan con la fuente
 Gitea, los items de drill se quitan con el filesystem+reload y el parent
 responde 200.
+
+## H-008 - Ruta de escaneo: una rama concreta no se descubria en el multibranch
+
+**Hallazgo:** al integrar los escaneos (Fase 5) hice un merge de prueba desde
+la rama `fm/ci-scans` (push via SSH + PR). El PR se abria y su build
+`PR-2` corria y pasaba, pero el required status check `infrastructure/pipeline/head`
+nunca se satisfacia: la indexacion del Multibranch listaba la rama en el
+log (`Checking branch fm/ci-scans`) pero ahi terminaba — sin
+`'pipelines/Jenkinsfile' found`, sin `Met criteria`, sin creacion del job
+de rama, y sin mensaje de error. Consecuencia: Gitea rechazaba el merge
+("Not all required status checks successful").
+
+**Diagnostico (bisectado):** el contenido y el head de la rama eran
+correctos (Jenkinsfile presente, `contents` API 200, builds verdes). El
+fallo era exclusivo del nombre de la rama: creando ramas de control
+apuntadas al mismo head (`ctest`, `fred`, `fmx`, `ci-scans`, `x/fm/zz`)
+todas se descubrian y construian; solo `fm/ci-scans` no. No coincide con
+prefijos (fmx ok), sufijos (ci-scans ok), slashes (x/fm/zz, cd/scan ok)
+ni con contrasena de credenciales (main/PR usan las mismas). El plugin
+Gitea de Jenkins maltrata ese nombre puntual (posible colision interna de
+SCMHead); el log de branch-api no lo reporta como error.
+
+**Remediacion:** renombrar la rama a `ci/scans-20260916` y migrar la PR
+(cerrar PR-2 y abrir PR-3 desde el nombre sano). Con el nombre nuevo, el
+job de rama se creo, construyo verde, el status `head` quedo en success y
+el merge fluyo dentro del gate. La rama original se borro.
+
+**Evidencia:** PR-3 merged=True (merge_commit `5a2a35b`), statuses
+`pr-main` + `head` en success para el head de la PR; main build #6 SUCCESS
+cubriendo deploy con la imagen `5a2a35b` y `/health` ok; el escaneo
+posterior del multibranch deja solo `main`.
+
+**Notas:**
+- En el camino, crear ramas via API con `old_ref_name` apuntando a
+  estados previos dejo remanentes `ztest/fm` y `ztest/fm2` que el API
+  reporta como existentes pero no lista (solo en el caché de Gitea; el
+  `git_branch` de Postgres no existe en esta version). DELETE devuelve
+  500. No afectan al pipeline.
+- Leccion: evitar ramas temporales con el prefijo que ya fallo; si un job
+  de rama no aparece tras un push limpio, probar renombrar antes de tocar
+  la configuracion del pipeline.
