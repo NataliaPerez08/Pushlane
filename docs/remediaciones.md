@@ -10,6 +10,9 @@ realizan contra el cluster Proxmox y los documentos del repositorio.
 | H-002 | 2026-09-15 | Ruta de vault incorrecta en la documentacion | Baja | Remediado |
 | H-003 | 2026-09-15 | Recreacion de las VMs desde cero no ensayada | Media | Aceptado (Fase 10) |
 | H-004 | 2026-09-15 | Contrasenas de usuarios de Gitea impresas en logs de apply | Media | Remediado |
+| H-005 | 2026-09-16 | Gitea 1.24 segaba las entregas del webhook (ALLOWED_HOST_LIST) | Alta | Remediado |
+| H-006 | 2026-09-16 | Job multibranch con 500 en el parent (folderViews sin owner) | Alta | Remediado |
+| H-007 | 2026-09-16 | Debug de stores de CI con configurantes XStream no documentados | Baja | Documentado |
 
 ## H-001 - Token de API de Proxmox con privilegios de root
 
@@ -100,3 +103,60 @@ coincidencias. La tarea de creacion mantiene `no_log`.
 **Recomendacion:** rotar las contrasenas de `devops` y `developer`
 (`PATCH /api/v1/admin/users/{username}`) si los logs fugados salieron
 del nodo de control; en el lab se evaluo como riesgo aceptable.
+
+## H-005 - Gitea 1.24 segaba las entregas del webhook
+
+**Hallazgo:** hook manual en `homelab/infrastructure` hacia
+`http://jenkins.lab.local:8080/gitea-webhook/post` con entregas fallidas
+(via basica 401 en la tabla `hook_task`). Gitea 1.24 aplica la opcion
+`webhook.ALLOWED_HOST_LIST` a las entregas salientes y, con el valor por
+defecto, denegaba `jenkins.lab.local(10.0.0.22:8080)` con
+"webhook can only call allowed HTTP servers (check your webhook.ALLOWED_HOST_LIST setting), deny 'jenkins.lab.local(10.0.0.22:8080)'".
+
+**Remediacion:** `GITEA__webhook__ALLOWED_HOST_LIST: "private"` en
+`services/gitea/compose.yml` (mismo valor que el ajuste manual que
+remedio las entregas; en Gitea 1.24 el valor por defecto de
+`webhook.ALLOWED_HOST_LIST` es `private`, o sea, el ajuste es redundante
+y seguro; se mantiene explicito). En algun momento el valor se cambio
+manual a `public`; se volvio a `private` y se codifico en el compose.
+
+**Evidencia:** tras el cambio, delivery id=3 con `is_succeed=t` y
+`status:200`; push real disparo build #1 de Jenkins sin `Build Now`.
+
+## H-006 - Job multibranch con 500 en el parent (folderViews sin owner)
+
+**Hallazgo:** al cargar la definicion XML del job, el parent
+(`/job/infrastructure/`, UI y API) devolvia 500, mientras los hijos
+(`/job/infrastructure/job/main/`) funcionaban. El stack apuntaba a
+`MultiBranchProjectViewHolder.getPrimaryView` con
+"Cannot invoke jenkins.branch.MultiBranchProject.hasVisibleItems() because
+this.owner is null": un configurante de XStream de
+`jenkins.branch.MultiBranchProjectViewHolder` deja `owner` (campo final,
+no escribe en el XML al guardar) en null cuando el elemento
+`<folderViews/>` no lo referencia.
+
+**Remediacion:** `<owner>` dentro de `<folderViews>` apuntando al
+`WorkflowMultiBranchProject` padre (`reference="../.."`, igual que el
+`<icon/>`); primer arreglo manual en el config vivo, luego codificado en
+`ansible/roles/jenkins/templates/job-multibranch.xml.j2`.
+
+**Evidencia:** tras el parche manual, parent API y UI responden 200;
+re-aplicacion del rol idempotente (handlers sin cambios) y build #5
+intacto.
+
+## H-007 - Configurantes XStream en plugins de CI no documentados
+
+**Hallazgo:** tres fallos de la Fase 4-5 por campos de plugin silenciosos
+en XML: (1) un `SourcesList` en vez de `BranchSourceList` hacia que Gitea
+no resolviera la configuracion de la fuente y el job perdiera los repo
+tratados; (2) la matrix de seguridad con `authenticatedOverride` y sin
+`Job/Delete` impedía borrar items desde UI/groovy; (3) el `owner` del
+view (H-006).
+
+**Remediacion:** uso de `BranchSourceList` en la plantilla;
+eliminacion de items vía filesystem + `Jenkins.instance.reload()` (sin
+necesidad de ampliar la matrix); y el `<owner>` del holder (H-006).
+
+**Evidencia:** jobs creados desde la plantilla levantan con la fuente
+Gitea, los items de drill se quitan con el filesystem+reload y el parent
+responde 200.

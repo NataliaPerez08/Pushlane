@@ -1,0 +1,23 @@
+---
+# La configuración de JCasC se aplica en el arranque: cuando cambia casc.yaml
+# se reinicia el controller (docker restart). La actualizacion del job usa la
+# API REST con cookie jar + crumb CSRF (el CLI por HTTP da 403 en 2.568+).
+- name: Reload the Jenkins controller configuration
+  community.docker.docker_container:
+    name: "{{ jenkins_container }}"
+    restart: true
+  no_log: true
+
+- name: Update the multibranch job
+  ansible.builtin.shell:
+    cmd: >-
+      docker exec -i {{ jenkins_container }} sh -c
+      'c=$(curl -sf -c /tmp/jc.txt -u {{ jenkins_admin_user }}:{{ jenkins_admin_password }}
+      http://localhost:8080/crumbIssuer/api/json | sed "s/.*\"crumb\":\"\([^\"]*\)\".*/\1/") &&
+      curl -sf -o /dev/null -b /tmp/jc.txt
+      -u {{ jenkins_admin_user }}:{{ jenkins_admin_password }}
+      -H "Jenkins-Crumb: $c" -H "Content-Type: application/xml"
+      --data-binary @-
+      "http://localhost:8080/job/{{ jenkins_job_name }}/config.xml"'
+      < /opt/pushlane/jenkins/job-{{ jenkins_job_name }}.xml
+  no_log: true

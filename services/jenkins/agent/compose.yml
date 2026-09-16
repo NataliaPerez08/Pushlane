@@ -9,3 +9,7 @@ services:
       JENKINS_AGENT_WORKDIR: "/home/jenkins/agent"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    # El agente corre como uid 1000 (jenkins); se le dan los grupos
+    # suplementarios del host (GID del grupo docker) para hablar con el socket.
+    group_add:
+      - "${DOCKER_GID:-988}"

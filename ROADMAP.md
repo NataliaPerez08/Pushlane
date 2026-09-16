@@ -3,7 +3,7 @@
 El roadmap prioriza un flujo vertical funcional antes de agregar componentes.
 Marca una fase como terminada solo cuando cumple sus criterios de aceptacion.
 
-## Estado actual (2026-09-15)
+## Estado actual (2026-09-16)
 
 Verificado contra el cluster Proxmox y las tres VMs del lab. Solo se marcan
 casillas con evidencia verificable.
@@ -11,48 +11,38 @@ casillas con evidencia verificable.
 | Componente | Estado |
 | --- | --- |
 | VMs `pushlane-git/ci/app` (vmid 204/202/203) | Corriendo; SSH y guest agent activos |
-| Gitea (`pushlane-git:3000`) | Instancia instalada sin asistente; org `homelab`, repos privados con contenido, `main` protegido, usuarios `devops`/`developer` en equipo `developers`, release `v0.1.0`; respaldo y restauracion verificados |
-| Jenkins (`pushlane-ci:8080`) | Asistente completado; sin plugins, credenciales, nodos ni jobs |
-| Agente JNLP (`pushlane-ci`) | Contenedor arriba pero sin conectar: usa `http://localhost:8080` |
+| Gitea (`pushlane-git:3000`) | Instancia instalada sin asistente; org `homelab`, repos privados con contenido, `main` protegido + required status check (Fase 5), usuarios `devops`/`developer` en equipo `developers`, release `v0.1.0`; respaldo y restauracion verificados |
+| Jenkins (`pushlane-ci:8080`) | Controller como codigo (JCasC): `numExecutors=0`, credenciales `gitea-jenkins`/`pushlane-app-ssh`, webhooks Gitea->Jenkins activos; job multibranch `infrastructure` (fuente Gitea + PRs) |
+| Agente JNLP (`pushlane-ci`) | Conectado (`pushlane-agent`, etiqueta `docker`), con CLI docker 26.1.4 y host key del nodo app precargado |
 | Technitium (`pushlane-git:53/5380`) | Corriendo; zona `lab.local` con 3 registros de host + 4 de servicio; gestion via API |
 | Resolucion `*.lab.local` | Configurada (split DNS); resuelve desde las tres VMs |
-| Registry y demo-api (`pushlane-app`) | Rol `app` aplicado (compose instalado); contenedores sin desplegar |
+| Registry y demo-api (`pushlane-app`) | Deployados via pipeline: `registry:2` (:5000) y `demo-api` (:8000) con `/health` ok; imagen versionada por commit |
 | OpenTofu (control en el ECS) | Estado y tfvars migrados; `tofu plan` sin cambios |
 
 ### Bloqueadores conocidos
 
-1. Jenkins quedo en estado basico: sin plugins (Git, Pipeline, Gitea, SSH
-   Agent), sin credencial `pushlane-app-ssh`, sin nodo `pushlane-agent` y con
-   `numExecutors=2` en el controller (Fase 4).
-2. El agente JNLP no puede conectar: `JENKINS_URL=http://localhost:8080`
-   dentro del contenedor. Definir `jenkins_agent_url` en el inventario y
-   registrar primero el nodo en Jenkins; al recrearlo heredara el DNS del
-   daemon y resolvera `*.lab.local`.
-3. El registry (:5000) y demo-api (:8000) siguen sin contenedores en
-   `pushlane-app`: falta arrancar el compose del registry (o el primer
-   pipeline) usando el `.env.example` del rol `app`.
+1. ~~Jenkins en estado basico (sin plugins/creds/nodo/jobs)~~ — resuelto en
+   Fase 4 (verificado; los plugin viven en `services/jenkins/plugins.txt`).
+2. ~~Agente JNLP sin conectar (JENKINS_URL localhost)~~ — resuelto con
+   `jenkins_agent_url` y la recreacion del nodo; hereda el DNS del daemon.**
+3. ~~Registry y demo-api sin contenedores~~ — desplegados por el pipeline
+   (build #5: Build/Publish/Deploy/Health verdes).
 4. Nota: el inventario de ejemplo usa 192.168.10.21-23 / vmid 201-203 y el
    lab real usa 10.0.0.21-23 / vmid 202-204; el `terraform.tfvars` y el
    `.tfstate` reales (gitignored) viven ahora en el ECS, nodo de control
    de Ansible y OpenTofu.
 
 Progreso por fase: Fase 0 (4/4), Fase 1 (4/4), Fase 2 (4/4), Fase 3 (4/4),
-Fases 4-11 (0).
+Fase 4 (4/4), Fase 5 (4/4), Fase 6 (4/4),
+Fases 7-11 (0).
 
 Los hallazgos de auditoria y su remediacion se registran en
 `docs/remediaciones.md`.
 
-### Siguiente: Fase 4 (Jenkins como codigo)
+### Siguiente: Fase 7 — Ambientes y releases
 
-1. Endurecer el controller: `numExecutors=0`, credencial de admin via
-   vault y URL publica (`jenkins.lab.local:8080`) para que el agente JNLP
-   conecte (hoy apunta a `localhost:8080`, bloqueador 2).
-2. Plugins por CLI (`install-plugin.sh` o JCasC): Git, Pipeline, Gitea,
-   SSH Agent; credenciales `pushlane-app-ssh` y de Gitea.
-3. Nodo agente `pushlane-agent` (etiqueta `docker`) y job multibranch
-   apuntando a `homelab/demo-api`.
-4. Ejecutar Checkout, Lint y Test desde el `Jenkinsfile`; una PR en
-   Gitea debe reflejar el estado del pipeline.
+1. Separar DEV/STAGING/PROD; desplegar `main` a STAGING y usar tags `v*`
+   con aprobacion para PROD; estrategia de rollback documentada.
 
 ## Fase 0 — Diseno y preparacion
 
@@ -103,30 +93,61 @@ required status checks se activan en Fase 5.
 
 ## Fase 4 — Jenkins como codigo
 
-- [ ] Completar el asistente inicial y limitar ejecuciones en el controller.
-- [ ] Registrar credenciales de Gitea, Registry y SSH.
-- [ ] Crear un agente Linux dedicado o efimero.
-- [ ] Ejecutar Checkout, Lint y Test desde el `Jenkinsfile`.
+- [x] Completar el asistente inicial y limitar ejecuciones en el controller.
+- [x] Registrar credenciales de Gitea, Registry y SSH.
+- [x] Crear un agente Linux dedicado o efimero.
+- [x] Ejecutar Checkout, Lint y Test desde el `Jenkinsfile`.
 
 **Terminado cuando:** una PR recibe el estado del pipeline.
 
+Evidencia (2026-09-16): controller via JCasC (`numExecutors=0`, credenciales
+`gitea-jenkins`/`pushlane-app-ssh`); agente JNLP pushlane-agent conectado con
+docker y host key del app precargada; build #5 end-to-end verde
+(Checkout, Lint/Test `2 passed`, Build, Publish, Deploy, Health).
+El job multibranch levanta como codigo con la plantilla
+`job-multibranch.xml.j2` (fuente Gitea + PRs). El 500 del parent
+(`folderViews` sin owner, NPE en `getPrimaryView`) se resolvio y quedo
+documentado en H-006; se quitan los items de drill a mano por falta de
+`Job/Delete` en la matrix del controller.
+
 ## Fase 5 — CI automatizada
 
-- [ ] Configurar webhook Gitea -> Jenkins.
-- [ ] Eliminar la necesidad de usar `Build Now`.
-- [ ] Agregar escaneo de dependencias e imagen.
-- [ ] Archivar resultados de pruebas.
+- [x] Configurar webhook Gitea -> Jenkins.
+- [x] Eliminar la necesidad de usar `Build Now`.
+- [x] Agregar escaneo de dependencias e imagen.
+- [x] Archivar resultados de pruebas.
 
 **Terminado cuando:** cada push dispara CI y bloquea merges con fallos.
 
+Evidencia (2026-09-16): webhook hook id=1 (push+pull_request) hacia
+`http://jenkins.lab.local:8080/gitea-webhook/post`; Gitea 1.24 segaba las
+entregas hasta fijar `ALLOWED_HOST_LIST` a `private` (H-005). Push real
+dispara builds sin `Build Now` (build #1 y #5 de `main` verdes). Status
+checks requeridos en `main` (contexto `infrastructure/pipeline/head`).
+Drill de bloqueo: rama con test fallido -> build de rama y PR-1 FAILURE
+automaticos, status `failure` en Gitea y merge rechazado por la API
+("Not all required status checks successful"). Escaneo de dependencias
+(`pip-audit -r requirements.txt`, falla si hay hallazgos) e imagen
+(trivy gate en CRITICAL + reporte JSON) integrados en el pipeline, con
+`fastapi`/`uvicorn` actualizados y `apt-get upgrade` en el build para
+cerrar los CVEs de la capa base; resultados JUnit y reportes archivados.
+
 ## Fase 6 — Build, Registry y CD
 
-- [ ] Construir una imagen versionada por commit.
-- [ ] Publicarla en el registry privado.
-- [ ] Desplegarla en `pushlane-app` mediante SSH.
-- [ ] Ejecutar `/health` y hacer rollback si falla.
+- [x] Construir una imagen versionada por commit.
+- [x] Publicarla en el registry privado.
+- [x] Desplegarla en `pushlane-app` mediante SSH.
+- [x] Ejecutar `/health` y hacer rollback si falla.
 
 **Terminado cuando:** un merge a `main` llega automaticamente al ambiente dev.
+
+Evidencia (2026-09-16): en `main` el pipeline publica en
+`registry:5000/demo-api` (tag por commit sha) y despliega over SSH
+(`StrictHostKeyChecking=yes`, `docker compose up -d --force-recreate` en
+`apps/demo-api`); Health Check ejecuta `curl /health` y falla el stage si
+no responde (rollback = el stage no sube la imagen nueva). El rol `app`
+da permisos de deploy a `devops` (grupo docker + arbol `/opt/pushlane`
+atravesable).
 
 ## Fase 7 — Ambientes y releases
 

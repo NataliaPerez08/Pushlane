@@ -1,0 +1,48 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject plugin="workflow-cps">
+  <actions/>
+  <description>Repositorio homelab/{{ jenkins_gitea_repo }} de Gitea</description>
+  <properties/>
+  <!-- owner es un campo final de MultiBranchProjectViewHolder: sin la
+       referencia el holder queda sin padre y el UI/API del job devuelve 500
+       (NPE en getPrimaryView -> MultiBranchProject.hasVisibleItems). -->
+  <folderViews class="jenkins.branch.MultiBranchProjectViewHolder" plugin="branch-api">
+    <owner class="org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject" reference="../.."/>
+  </folderViews>
+  <healthMetrics/>
+  <icon class="jenkins.branch.MetadataActionFolderIcon" plugin="branch-api"/>
+  <orphanedItemStrategy class="jenkins.branch.DefaultOrphanedItemStrategy" plugin="branch-api">
+    <daysToKeep>-1</daysToKeep>
+    <numToKeep>-1</numToKeep>
+  </orphanedItemStrategy>
+  <triggers/>
+  <disabled>false</disabled>
+  <!-- La clase del listado de sources es BranchSourceList (no SourcesList); un
+       nombre de clase incorrecto hace que XStream descarte la source en
+       silencio y el job quede sin fuentes. Formato validado contra branch-api
+       2.1280 / gitea 283. -->
+  <sources class="jenkins.branch.MultiBranchProject$BranchSourceList" plugin="branch-api">
+    <data>
+      <jenkins.branch.BranchSource>
+        <source class="org.jenkinsci.plugin.gitea.GiteaSCMSource" plugin="gitea">
+          <id>gitea-{{ jenkins_gitea_repo }}</id>
+          <serverUrl>http://gitea.{{ lab_domain }}:3000</serverUrl>
+          <repoOwner>{{ gitea_org_name | default('homelab') }}</repoOwner>
+          <repository>{{ jenkins_gitea_repo }}</repository>
+          <credentialsId>{{ jenkins_gitea_credentials_id }}</credentialsId>
+          <traits>
+            <org.jenkinsci.plugin.gitea.BranchDiscoveryTrait>
+              <strategyId>1</strategyId>
+            </org.jenkinsci.plugin.gitea.BranchDiscoveryTrait>
+            <org.jenkinsci.plugin.gitea.OriginPullRequestDiscoveryTrait>
+              <strategyId>1</strategyId>
+            </org.jenkinsci.plugin.gitea.OriginPullRequestDiscoveryTrait>
+          </traits>
+        </source>
+      </jenkins.branch.BranchSource>
+    </data>
+  </sources>
+  <factory class="org.jenkinsci.plugins.workflow.multibranch.WorkflowBranchProjectFactory" plugin="workflow-cps">
+    <scriptPath>{{ jenkins_script_path }}</scriptPath>
+  </factory>
+</org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject>

@@ -13,5 +13,14 @@ gitea_lab_users:
   developer:
     email: developer@lab.local
     password: "{{ developer_user_password }}"
+  # Usuario de integracion: clone y estados de PR desde Jenkins (Fase 4).
+  jenkins:
+    email: jenkins@lab.local
+    password: "{{ gitea_jenkins_password }}"
 gitea_control_key_title: pushlane-ecs
 gitea_team_name: developers
+# Los required status checks sobre main solo tienen sentido en el repo cuyo
+# pipeline CI se construye (infrastructure); demo-api no tiene jobs propios.
+gitea_status_check_repos:
+  - infrastructure
+gitea_status_check_context: infrastructure/pipeline/head

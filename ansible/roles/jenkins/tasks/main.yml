@@ -1,29 +1,143 @@
 ---
+# Controller reproducible: imagen con plugins preinstalados (Dockerfile),
+# configuracion por JCasC y job multibranch por jenkins-cli. El agente
+# conecta por JNLP con el secret que genera el controller para el nodo.
+
 - name: Create Jenkins service directory
   ansible.builtin.file:
     path: /opt/pushlane/jenkins
     state: directory
     mode: "0750"
 
-- name: Install Jenkins Compose definition
+# plugins.txt debe ser legible por uid 1000 (jenkins) porque jenkins-plugin-cli
+# corre como ese usuario durante el build: modo 0640 root la hace ilegible y el
+# RUN falla en silencio ("Unable to open ...plugins.txt", exit 0 sin plugins).
+- name: Install the Jenkins controller build context
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../services/jenkins/compose.yml"
-    dest: /opt/pushlane/jenkins/compose.yml
-    mode: "0640"
+    src: "{{ playbook_dir }}/../../services/jenkins/{{ item.item }}"
+    dest: "/opt/pushlane/jenkins/{{ item.item }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - item: compose.yml
+      mode: "0644"
+    - item: Dockerfile
+      mode: "0644"
+    - item: plugins.txt
+      mode: "0644"
 
-- name: Start Jenkins
+- name: Fail if the Jenkins secrets are missing
+  ansible.builtin.assert:
+    that:
+      - jenkins_admin_password is defined
+      - jenkins_admin_password | length > 0
+      - hostvars['pushlane-git'].gitea_jenkins_password is defined
+      - hostvars['pushlane-git'].gitea_jenkins_password | length > 0
+    fail_msg: >-
+      Define jenkins_admin_password en el vault del grupo jenkins y
+      gitea_jenkins_password en el vault del grupo gitea; ver
+      docs/bootstrap.md.
+
+- name: Generate the CI deploy key pair
+  ansible.builtin.command:
+    cmd: "ssh-keygen -t ed25519 -N '' -C pushlane-ci -f {{ jenkins_deploy_key }}"
+    creates: "{{ jenkins_deploy_key }}"
+  delegate_to: localhost
+  become: false
+
+- name: Create the Jenkins configuration directory
+  ansible.builtin.file:
+    path: /opt/pushlane/jenkins/casc
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0700"
+
+- name: Install the Jenkins controller configuration
+  ansible.builtin.template:
+    src: casc.yaml.j2
+    dest: /opt/pushlane/jenkins/casc/casc.yaml
+    owner: "1000"
+    group: "1000"
+    mode: "0600"
+  no_log: true
+  notify: Reload the Jenkins controller configuration
+
+- name: Start the Jenkins controller
   community.docker.docker_compose_v2:
     project_src: /opt/pushlane/jenkins
     state: present
+    build: always
 
-- name: Fail if the Jenkins agent secret is missing
-  ansible.builtin.assert:
-    that:
-      - jenkins_agent_secret is defined
-      - jenkins_agent_secret | length > 0
-    fail_msg: >-
-      Define jenkins_agent_secret (crea el nodo inbound en Jenkins y copia su
-      secret) en el inventario real o en un vault; ver docs/bootstrap.md.
+- name: Wait for the Jenkins controller
+  ansible.builtin.uri:
+    url: http://localhost:8080/login
+    status_code: 200
+  retries: 40
+  delay: 5
+  register: jenkins_login
+  until: jenkins_login.status | default(0) == 200
+  changed_when: false
+
+- name: Fetch the Jenkins CLI jar
+  community.docker.docker_container_exec:
+    container: "{{ jenkins_container }}"
+    command: "curl -sf http://localhost:8080/jnlpJars/jenkins-cli.jar -o {{ jenkins_cli_path }}"
+  changed_when: false
+
+# El CLI por HTTP da 403 en Jenkins 2.568+ ("CLI handshake failed"); la API
+# REST con cookie jar + crumb CSRF funciona. Todas las operaciones posteriores
+# usan curl contra la API REST, no el CLI.
+
+- name: Read the Jenkins job list
+  community.docker.docker_container_exec:
+    container: "{{ jenkins_container }}"
+    command: >-
+      curl -sf -u {{ jenkins_admin_user }}:{{ jenkins_admin_password }}
+      "http://localhost:8080/api/json?tree=jobs%5Bname%5D"
+  no_log: true
+  register: jenkins_jobs
+  changed_when: false
+
+- name: Install the multibranch job definition
+  ansible.builtin.template:
+    src: job-multibranch.xml.j2
+    dest: "/opt/pushlane/jenkins/job-{{ jenkins_job_name }}.xml"
+    mode: "0640"
+  notify: Update the multibranch job
+
+- name: Create the multibranch job
+  ansible.builtin.shell:
+    cmd: >-
+      docker exec -i {{ jenkins_container }} sh -c
+      'c=$(curl -sf -c /tmp/jc.txt -u {{ jenkins_admin_user }}:{{ jenkins_admin_password }}
+      http://localhost:8080/crumbIssuer/api/json | sed "s/.*\"crumb\":\"\([^\"]*\)\".*/\1/") &&
+      curl -sf -o /dev/null -b /tmp/jc.txt
+      -u {{ jenkins_admin_user }}:{{ jenkins_admin_password }}
+      -H "Jenkins-Crumb: $c" -H "Content-Type: application/xml"
+      --data-binary @-
+      "http://localhost:8080/createItem?name={{ jenkins_job_name }}"'
+      < /opt/pushlane/jenkins/job-{{ jenkins_job_name }}.xml
+  when: jenkins_job_name not in jenkins_jobs.stdout
+  no_log: true
+
+# El nodo del agente lo define JCasC; su secret de conexion lo genera el
+# controller y se descubre del JNLP del nodo (HMAC estable por instancia).
+
+- name: Read the agent JNLP definition
+  community.docker.docker_container_exec:
+    container: "{{ jenkins_container }}"
+    command: >-
+      curl -sf -u {{ jenkins_admin_user }}:{{ jenkins_admin_password }}
+      http://localhost:8080/computer/{{ jenkins_agent_name }}/jenkins-agent.jnlp
+  no_log: true
+  register: jenkins_agent_jnlp
+  changed_when: false
+
+- name: Keep the agent connection secret
+  ansible.builtin.set_fact:
+    jenkins_agent_secret: "{{ jenkins_agent_jnlp.stdout | regex_search('[0-9a-f]{64}') }}"
+  no_log: true
+  failed_when: jenkins_agent_secret | length == 0
 
 - name: Create Jenkins agent service directory
   ansible.builtin.file:
@@ -43,8 +157,9 @@
     mode: "0600"
     content: |
       JENKINS_SECRET={{ jenkins_agent_secret }}
-      JENKINS_URL={{ jenkins_agent_url | default('http://localhost:8080') }}
-      JENKINS_AGENT_NAME={{ jenkins_agent_name | default('pushlane-agent') }}
+      JENKINS_URL={{ jenkins_agent_url }}
+      JENKINS_AGENT_NAME={{ jenkins_agent_name }}
+  no_log: true
 
 - name: Copy Jenkins agent build context
   ansible.builtin.copy:
@@ -60,8 +175,7 @@
     build:
       path: /opt/pushlane/jenkins-agent/context
 
-- name: Start Jenkins agent
+- name: Start the Jenkins agent
   community.docker.docker_compose_v2:
     project_src: /opt/pushlane/jenkins-agent
     state: present
-
