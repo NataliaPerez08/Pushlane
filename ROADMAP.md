@@ -131,6 +131,11 @@ automaticos, status `failure` en Gitea y merge rechazado por la API
 (trivy gate en CRITICAL + reporte JSON) integrados en el pipeline, con
 `fastapi`/`uvicorn` actualizados y `apt-get upgrade` en el build para
 cerrar los CVEs de la capa base; resultados JUnit y reportes archivados.
+Merge real de la PR de los escaneos (PR-3, merged=True, commit `5a2a35b`)
+con gate verde en `head` + `pr-main`; main build #6 SUCCESS, imagen
+`demo-api:5a2a35b` desplegada y `/health` ok. La PR original (PR-2) se
+cerro como superseded por el quirk de descubrimiento de `fm/ci-scans`
+registrado en H-008.
 
 ## Fase 6 — Build, Registry y CD
 
